@@ -1,0 +1,5 @@
+Keras 2.2.4
+Scikit-learn 0.21.2
+Scikit-image 0.15.0
+NumPy 1.16.4
+Pandas 0.25.0

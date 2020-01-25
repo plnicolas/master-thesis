@@ -24,45 +24,6 @@ import FragmentSequence as fs
 import FragmentSequenceCentered as fsc
 
 
-def read_database(path):
-    """
-    This function reads a dataset of paths towards images and the corresponding classes.
-    
-    parameter:
-    ----------
-    - path: The path to the dataset file.
-    
-    returns:
-    --------
-    - database[0]: The dataset of paths towards images.
-    - np.array(database[1]): The corresponding classes.
-    """
-    
-    database = pandas.read_csv(path, sep = ",", header = None)
-    
-    return database[0], np.array(database[1])
-    
-    
-
-def read_list(path):
-    """
-    This function reads the list of classes and the corresponding indexes.
-    
-    parameter:
-    ----------
-    - path: The path to the list file.
-    
-    returns:
-    --------
-    - np.array(database[0]): The indexes of the classes.
-    - database[1]: The corresponding class names.
-    """
-    
-    database = pandas.read_csv(path, delim_whitespace = True, header = None)
-    
-    return np.array(database[0]), database[1]
-
-
 def euclidean_distance(vects):
     x, y = vects
     sum_square = K.sum(K.square(x - y), axis=1, keepdims=True)
@@ -104,11 +65,23 @@ def create_neural_network(numberClasses, widthImage, heightImage, initialLearnin
 
     model = keras.models.Sequential()
     
+    """
+    #Simple CNN
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
+    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+    model.add(keras.layers.Flatten())
+    """
+
+    #ResNet50
     model.add(keras.applications.resnet50.ResNet50(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
     
+    #Siamese network; two input images
     model1 = model(a)
     model2 = model(b)
 
+    #Use the euclidean distance as the similarity measure between the two fragments' feature maps
     distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
 
     #Binary classification: same papyrus or not
@@ -277,11 +250,10 @@ class ParametersClass:
         return stringInformation
 
 
-def create_pairs(data, indexList):
-    #Number of pairs of each type to generate, for each papyrus
-    K = 100
+def create_pairs(K, data, indexList):
     pairs = []
     labels = []
+    #For each papyrus
     for index in indexList:
         isIndex = data.iloc[:,1]==index
         isNotIndex = data.iloc[:,1]!=index
@@ -289,32 +261,36 @@ def create_pairs(data, indexList):
         indexTrueList = data[isIndex].iloc[:,0]
         #List of images NOT from the indexed papyrus
         indexFalseList = data[isNotIndex].iloc[:,0]
-            
+           
         #K negative pairs
         p1List = indexTrueList.sample(n=K, replace=True, random_state=356)
         p2List = indexFalseList.sample(n=K, replace=True, random_state=323)
         #pairs.append(pandas.concat([p1.reset_index(drop=True), p2.reset_index(drop=True)], axis=1).values)
         for k in range(K):
-            pairs.append([p1List.values[k], p2List.values[k]])
-            labels.append(0)
+            pair = [p1List.values[k], p2List.values[k]]
+            if pair not in pairs:
+                pairs.append(pair)
+                labels.append(0)
         
         #K positive pairs
         p1List = indexTrueList.sample(n=K, replace=True, random_state=362)
         p2List = indexTrueList.sample(n=K, replace=True, random_state=316)
         #pairs.append(pandas.concat([p1.reset_index(drop=True), p2.reset_index(drop=True)], axis=1).values)
         for k in range(K):
-            pairs.append([p1List.values[k], p2List.values[k]])
-            labels.append(1)
+            pair = [p1List.values[k], p2List.values[k]]
+            if pair not in pairs:
+                pairs.append(pair)
+                labels.append(1)
 
     return pairs, labels
 
 
 
-    return np.array(pairs), np.array(labels)
+    #return np.array(pairs), np.array(labels)
 
 if __name__ == "__main__":
     """
-    TYPE_IDENTIFICATION: The type of identification ("artist", "genre", or "style").
+    PAIRS: The number of pairs of each type (positive/negative) to sample for each papyrus; duplicates will be discarded.
     SIZE_BATCH: The size of the batch.
     NUMBER_EPOCHS: The number of epochs to train.
     INITIAL_LEARNING_RATE: The initial learning rate.
@@ -333,14 +309,14 @@ if __name__ == "__main__":
     PREFIX_RESULTS: The prefix of the path where to store the results.
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
-    
-    SIZE_BATCH = 8
-    NUMBER_EPOCHS = 2
+    PAIRS = 500
+    SIZE_BATCH = 16
+    NUMBER_EPOCHS = 5
     INITIAL_LEARNING_RATE = 0.001
     NUMBER_EPOCHS_LEARNING_RATE = 5
     DISCOUNT_FACTOR = 0.1
-    WIDTH_IMAGE = 331
-    HEIGHT_IMAGE = 331
+    WIDTH_IMAGE = 224
+    HEIGHT_IMAGE = 224
     PROBABILITY_HORIZONTAL_FLIP = 0.5
     PROBABILITY_VERTICAL_FLIP = 0.0
     PROBABILITY_CROP_LEARNING_SET = 1.0
@@ -352,15 +328,25 @@ if __name__ == "__main__":
     PREFIX_RESULTS = "Results/"
     ADDITIONAL_INFORMATION = "This model implements the ResNet50 neural network with weights initialized on imagenet. The last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is the adam with the default beta1 and beta2 parameters."
     
-    stringInformation = "SIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nPROBABILITY_CROP_LEARNING_SET: {}\nREDUCTION_OPERATION_TEST_SET: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_LISTS: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP, PROBABILITY_CROP_LEARNING_SET, REDUCTION_OPERATION_TEST_SET, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_LISTS, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
+    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nPROBABILITY_CROP_LEARNING_SET: {}\nREDUCTION_OPERATION_TEST_SET: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_LISTS: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP, PROBABILITY_CROP_LEARNING_SET, REDUCTION_OPERATION_TEST_SET, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_LISTS, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
     data = pandas.read_csv("dataset.csv", sep=",", header=None)
 
     indexList = data.iloc[:,1].drop_duplicates().values
 
-    X, y = create_pairs(data, indexList)
+    X, y = create_pairs(K, data, indexList)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=356)
+
+    """
+    for i in zip(X_train, y_train):
+        print(i)
+
+    print("STOP")
+
+    for i in zip(X_test, y_test):
+        print(i)
+    """
     
     model = create_neural_network(len(indexList), WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
@@ -375,5 +361,3 @@ if __name__ == "__main__":
     
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)
-    
-    

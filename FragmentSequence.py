@@ -67,10 +67,7 @@ class FragmentSequence(keras.utils.Sequence):
         batchInput = self.setInput[(index * self.batchSize):(index * self.batchSize + self.batchSize)]
         batchOutput = self.setOutput[(index * self.batchSize):(index * self.batchSize + self.batchSize)]
         
-        """
-        filePath est une liste de deux file paths au lieu d'une string, forcément  ça ne marche pas
-        Il va falloir dédoubler le code ?
-        """
+
         batchInputReturned = [[skimage.io.imread(self.prefixPath + filePath[0]), skimage.io.imread(self.prefixPath + filePath[1])] for filePath in batchInput]
         
         imageGenerator = keras.preprocessing.image.ImageDataGenerator()

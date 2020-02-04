@@ -1,3 +1,14 @@
+"""
+    Python script to retrieve all papyrus annotations from Cytomine and build a dataset (with CSV file) with them.
+    Images will be saved in DOWNLOAD_PATH, while the CSV file will be saved at the root.
+    
+    Parameter: --rebuild
+                "True" to rebuild the dataset and CSV file from scratch
+
+    For security reasons, when rebuilding the dataset from scratch the already existing images are not deleted;
+    this should be done manually beforehand (to avoid "dead" files -i.e. not used in the dataset- in the folders).
+    """
+
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
@@ -8,6 +19,7 @@ import sys
 from argparse import ArgumentParser
 
 import os
+from os import path
 
 import csv
 
@@ -20,6 +32,13 @@ HOST = "research.cytomine.be"
 DOWNLOAD_PATH = "Images/"
 
 if __name__ == '__main__':
+    parser = ArgumentParser(prog="Annotation retrieval script")
+    parser.add_argument('--rebuild', dest='rebuild',
+                        default='False', help="Set to true to rebuild the whole dataset")
+
+    params, other = parser.parse_known_args(sys.argv[1:])
+
+    print("Parameters: {}\n".format(params.rebuild))
 
     # Cytomine
     with Cytomine(host=HOST, public_key=PUBLIC_KEY, private_key=PRIVATE_KEY,
@@ -32,12 +51,13 @@ if __name__ == '__main__':
         annotations.showGIS = True
         
         annotations.fetch()
-        #print(annotations)
 
         #CSV Writer object to build the CSV file of the dataset while retrieving the annotations
-        c = csv.writer(open("dataset.csv", "w", newline="\n"))
-
-        i = 0
+        #If we are rebuilding the dataset from scratch, rebuild the CSV file as well; else, append mode
+        if(params.rebuild == "True"):
+            c = csv.writer(open("dataset.csv", "w", newline="\n"))
+        else:
+            c = csv.writer(open("dataset.csv", "a", newline="\n"))
 
         for annotation in annotations:
             """
@@ -52,8 +72,10 @@ if __name__ == '__main__':
                 annotation.location
             ))
             """
-            annotationPath = DOWNLOAD_PATH + str(annotation.image) + "/crop/" + str(annotation.id) + ".png"
-            annotationInfo = [annotationPath, annotation.image]
-            c.writerow(annotationInfo)
 
-            annotation.dump(dest_pattern=os.path.join(DOWNLOAD_PATH, "{image}", "crop", "{id}.png"), mask=False, alpha=False)
+            annotationPath = DOWNLOAD_PATH + str(annotation.image) + "/crop/" + str(annotation.id) + ".png"
+            #If the annotation was already retrieved, skip
+            if(not path.exists(annotationPath)):
+                annotationInfo = [annotationPath, annotation.image]
+                c.writerow(annotationInfo)
+                annotation.dump(dest_pattern=os.path.join(DOWNLOAD_PATH, "{image}", "crop", "{id}.png"), mask=False, alpha=False)

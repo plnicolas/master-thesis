@@ -1,5 +1,6 @@
 """
-    Python script to retrieve all papyrus annotations from Cytomine and build a dataset (with CSV file) with them.
+    Python script to retrieve all papyrus annotations from Cytomine as regular crops and build a dataset
+    (with CSV file) with them.
     Images will be saved in DOWNLOAD_PATH, while the CSV file will be saved at the root.
     
     Parameter: --rebuild
@@ -7,7 +8,7 @@
 
     For security reasons, when rebuilding the dataset from scratch the already existing images are not deleted;
     this should be done manually beforehand (to avoid "dead" files -i.e. not used in the dataset- in the folders).
-    """
+"""
 
 from __future__ import absolute_import
 from __future__ import division

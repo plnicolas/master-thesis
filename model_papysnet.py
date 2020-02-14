@@ -33,25 +33,12 @@ def eucl_dist_output_shape(shapes):
     shape1, shape2 = shapes
     return (shape1[0], 1)
 
-
-
-def contrastive_loss(y_true, y_pred):
-    '''Contrastive loss from Hadsell-et-al.'06
-    http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-    '''
-    margin = 1
-    square_pred = K.square(y_pred)
-    margin_square = K.square(K.maximum(margin - y_pred, 0))
-    return K.mean(y_true * square_pred + (1 - y_true) * margin_square)
-
-
-def create_neural_network(numberClasses, widthImage, heightImage, initialLearningRate):
+def create_neural_network(widthImage, heightImage, initialLearningRate):
     """
     This function creates a compiled neural network model and displays a summary of it.
     
     parameters:
     -----------
-    - numberClasses: The total number of classes.
     - widthImage: The width of the images.
     - heightImage: The height of the images.
     - initialLearningRate: The initial learning rate.
@@ -65,24 +52,30 @@ def create_neural_network(numberClasses, widthImage, heightImage, initialLearnin
 
     model = keras.models.Sequential()
     
-    """
-    #Simple CNN
+    #Papy-S-Net (Pirrone et al. 2019)
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
     model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
     model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-    model.add(keras.layers.Conv2D(64, (3, 3), activation='relu'))
-    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-    model.add(keras.layers.Flatten())
-    """
 
-    #ResNet50
-    model.add(keras.applications.resnet50.ResNet50(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+
+    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(keras.layers.Flatten())
     
     #Siamese network; two input images
     model1 = model(a)
     model2 = model(b)
 
-    #Use the euclidean distance as the similarity measure between the two fragments' feature maps
-    distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
+    #Use the absolute difference as the similarity measure between the two fragments' feature maps
+    sub = keras.layers.Subtract()([model1, model2])
+    distance = keras.layers.Lambda(keras.backend.abs)(sub)
+
 
     #Binary classification: same papyrus or not
     lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
@@ -90,7 +83,7 @@ def create_neural_network(numberClasses, widthImage, heightImage, initialLearnin
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
     
-    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = contrastive_loss, metrics=['accuracy'])
+    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
     
     finalModel.summary()
     
@@ -250,11 +243,11 @@ class ParametersClass:
         return stringInformation
 
 
-def create_pairs(K, data, indexList):
+def create_pairs(K, data, IDList):
     pairs = []
     labels = []
     #For each papyrus
-    for index in indexList:
+    for index in IDList:
         isIndex = data.iloc[:,1]==index
         isNotIndex = data.iloc[:,1]!=index
         #List of images from the indexed papyrus
@@ -309,7 +302,7 @@ if __name__ == "__main__":
     PREFIX_RESULTS: The prefix of the path where to store the results.
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
-    PAIRS = 500
+    PAIRS = 2000
     SIZE_BATCH = 16
     NUMBER_EPOCHS = 5
     INITIAL_LEARNING_RATE = 0.001
@@ -332,11 +325,17 @@ if __name__ == "__main__":
     
     data = pandas.read_csv("dataset.csv", sep=",", header=None)
 
-    indexList = data.iloc[:,1].drop_duplicates().values
+    #IDList constains the ID of each papyrus
+    IDList = data.iloc[:,1].drop_duplicates().values
 
-    X, y = create_pairs(K, data, indexList)
+    X, y = create_pairs(PAIRS, data, IDList)
 
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=356)
+
+    """
+    print(len(X_train))
+    print(len(X_test))
+    """
 
     """
     for i in zip(X_train, y_train):
@@ -346,9 +345,9 @@ if __name__ == "__main__":
 
     for i in zip(X_test, y_test):
         print(i)
-    """
+    """ 
     
-    model = create_neural_network(len(indexList), WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
+    model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
     learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_CROP_LEARNING_SET, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
     validationSequence = fsc.FragmentSequenceCentered(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, REDUCTION_OPERATION_TEST_SET)
@@ -361,3 +360,4 @@ if __name__ == "__main__":
     
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)
+    

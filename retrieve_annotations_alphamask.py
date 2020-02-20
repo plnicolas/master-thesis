@@ -43,7 +43,7 @@ if __name__ == '__main__':
 
     # Cytomine
     with Cytomine(host=HOST, public_key=PUBLIC_KEY, private_key=PRIVATE_KEY,
-                  verbose=logging.INFO) as cytomine:
+                  verbose=logging.DEBUG) as cytomine:
         annotations = AnnotationCollection()
         annotations.project = 136266234
         
@@ -79,4 +79,4 @@ if __name__ == '__main__':
             if(not path.exists(annotationPath)):
                 annotationInfo = [annotationPath, annotation.image]
                 c.writerow(annotationInfo)
-                annotation.dump(dest_pattern=os.path.join(DOWNLOAD_PATH, "{image}", "alpha", "{id}.png"), mask=True)
+                annotation.dump(dest_pattern=os.path.join(DOWNLOAD_PATH, "{image}", "alpha", "{id}.png"), alpha=True, mask=True)

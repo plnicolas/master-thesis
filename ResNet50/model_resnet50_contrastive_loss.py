@@ -24,6 +24,14 @@ import pickle
 import FragmentSequence as fs
 import FragmentSequenceValidation as fsv
 
+def contrastive_loss(y_true, y_pred):
+    '''Contrastive loss from Hadsell-et-al.'06
+    http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+    '''
+    margin = 1
+    square_pred = K.square(y_pred)
+    margin_square = K.square(K.maximum(margin - y_pred, 0))
+    return K.mean(y_true * square_pred + (1 - y_true) * margin_square)
 
 def euclidean_distance(vects):
     x, y = vects
@@ -64,18 +72,16 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     #Use the euclidean distance as the similarity measure between the two fragments' feature maps
     distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
 
-    """
-    #Fully connected layer (probably not useful)
+    #Fully connected layer
     fullyConnected = keras.layers.Dense(64, activation='relu')(distance)
-    """
 
     #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
+    lastLayer = keras.layers.Dense(2, activation = 'softmax')(fullyConnected)
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
     
-    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
+    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = contrastive_loss, metrics=['accuracy'])
     
     finalModel.summary()
     
@@ -120,7 +126,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
     
     
-    #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
     return currentTime
 
@@ -310,7 +316,7 @@ if __name__ == "__main__":
     WIDTH_IMAGE = 224
     HEIGHT_IMAGE = 224
     PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.5
+    PROBABILITY_VERTICAL_FLIP = 0.0
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""

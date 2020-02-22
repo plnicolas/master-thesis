@@ -6,10 +6,10 @@ import skimage.transform
 
 class FragmentSequence(keras.utils.Sequence):
     """
-    This class is used as a sequence that gives mini-batches of preprocessed images. When taking a crop, the crop is always taken on the center of the image. 
+    This class is used as a sequence that gives mini-batches of preprocessed images. 
     """
     
-    def __init__(self, setInput, setOutput, batchSize, widthImage, heightImage, prefixPath):
+    def __init__(self, setInput, setOutput, batchSize, widthImage, heightImage, prefixPath, probabilityHorizontalFlip, probabilityVerticalFlip):
         """
         This is the initialization method.
         
@@ -21,7 +21,8 @@ class FragmentSequence(keras.utils.Sequence):
         - widthImage: The width of the image.
         - heightImage: The height of the image.
         - prefixPath: The path to give as prefix for every path stored in setInput.
-        - reductionOperation: The operation to use to reduce the size of the images to widthImage and heightImage ("crop" or "resize")
+        - probabilityHorizontalFlip: The probability to flip horizontally each image.
+        - probabilityVerticalFlip: The probability to flip vertically each image.
         """
         
         self.setInput = setInput
@@ -30,6 +31,8 @@ class FragmentSequence(keras.utils.Sequence):
         self.widthImage = widthImage
         self.heightImage = heightImage
         self.prefixPath = prefixPath
+        self.probabilityHorizontalFlip = probabilityHorizontalFlip
+        self.probabilityVerticalFlip = probabilityVerticalFlip
     
     
     def __len__(self):
@@ -61,9 +64,12 @@ class FragmentSequence(keras.utils.Sequence):
         
         batchInput = self.setInput[(index * self.batchSize):(index * self.batchSize + self.batchSize)]
         batchOutput = self.setOutput[(index * self.batchSize):(index * self.batchSize + self.batchSize)]
+        
 
         batchInputReturned = [[skimage.io.imread(self.prefixPath + filePath[0]), skimage.io.imread(self.prefixPath + filePath[1])] for filePath in batchInput]
-               
+        
+        imageGenerator = keras.preprocessing.image.ImageDataGenerator()
+        
         batchInputTransformed1 = []
         batchInputTransformed2 = []
 
@@ -72,9 +78,28 @@ class FragmentSequence(keras.utils.Sequence):
 
             picture1 = batchInputReturned[i][0]
             picture2 = batchInputReturned[i][1]
-                
-            #Picture 1
-            # Sometimes, images are too small and must be resized in order to take a crop of the wanted dimension.
+
+            ############
+            # Data augmentation: flipping
+            ############
+
+            randomNumber = np.random.random()
+            
+            if randomNumber < self.probabilityHorizontalFlip:
+                picture1 = imageGenerator.apply_transform(picture1, {"flip_horizontal" : True})
+                picture2 = imageGenerator.apply_transform(picture2, {"flip_horizontal" : True})
+            
+            elif randomNumber < (self.probabilityHorizontalFlip + self.probabilityVerticalFlip):
+                picture1 = imageGenerator.apply_transform(picture1, {"flip_vertical" : True})
+                picture2 = imageGenerator.apply_transform(picture2, {"flip_vertical" : True})
+            
+
+            ############
+            # Resize images if needed
+            ############
+
+            
+            #Picture 1                
             if ((picture1.shape[0] - self.heightImage) < 0) and ((picture1.shape[1] - self.widthImage) < 0):
                 picture1 = skimage.transform.resize(picture1, (self.heightImage, self.widthImage))
             
@@ -83,9 +108,8 @@ class FragmentSequence(keras.utils.Sequence):
             
             elif (picture1.shape[1] - self.widthImage) < 0:
                 picture1 = skimage.transform.resize(picture1, (picture1.shape[0], self.widthImage))
-
-            #Picture 2
-            # Sometimes, images are too small and must be resized in order to take a crop of the wanted dimension.
+                       
+            #Picture 2                
             if ((picture2.shape[0] - self.heightImage) < 0) and ((picture2.shape[1] - self.widthImage) < 0):
                 picture2 = skimage.transform.resize(picture2, (self.heightImage, self.widthImage))
             
@@ -94,6 +118,11 @@ class FragmentSequence(keras.utils.Sequence):
             
             elif (picture2.shape[1] - self.widthImage) < 0:
                 picture2 = skimage.transform.resize(picture2, (picture2.shape[0], self.widthImage))
+            
+
+            ############
+            # Preprocess and random crop
+            ############
 
             
             #Picture 1
@@ -102,12 +131,10 @@ class FragmentSequence(keras.utils.Sequence):
             picture1 = keras.applications.resnet50.preprocess_input(picture1)
             picture1 = picture1[0]
             
+            randomY = np.random.randint(0, picture1.shape[0] - self.heightImage + 1)
+            randomX = np.random.randint(0, picture1.shape[1] - self.widthImage + 1)
             
-            indexY = (picture1.shape[0] - self.heightImage) // 2
-            indexX = (picture1.shape[1] - self.widthImage) // 2
-            
-            picture1 = picture1[indexY:(indexY + self.heightImage), indexX:(indexX + self.widthImage), :]
-
+            picture1 = picture1[randomY:(randomY + self.heightImage), randomX:(randomX + self.widthImage), :]
 
             #Picture 2
             picture2 = np.expand_dims(picture2, axis=0)
@@ -115,16 +142,14 @@ class FragmentSequence(keras.utils.Sequence):
             picture2 = keras.applications.resnet50.preprocess_input(picture2)
             picture2 = picture2[0]
             
+            randomY = np.random.randint(0, picture2.shape[0] - self.heightImage + 1)
+            randomX = np.random.randint(0, picture2.shape[1] - self.widthImage + 1)
             
-            indexY = (picture2.shape[0] - self.heightImage) // 2
-            indexX = (picture2.shape[1] - self.widthImage) // 2
-            
-            picture2 = picture2[indexY:(indexY + self.heightImage), indexX:(indexX + self.widthImage), :]
+            picture2 = picture2[randomY:(randomY + self.heightImage), randomX:(randomX + self.widthImage), :]
             
             
             batchInputTransformed1.append(picture1)
             batchInputTransformed2.append(picture2)
-
             
             i += 1
         

@@ -21,6 +21,7 @@ import os
 import pickle
 
 import FragmentSequence as fs
+import FragmentSequenceValidation as fsv
 
 
 def create_neural_network(widthImage, heightImage, initialLearningRate):
@@ -66,10 +67,12 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     sub = keras.layers.Subtract()([model1, model2])
     distance = keras.layers.Lambda(keras.backend.abs)(sub)
 
-    #MANQUE LES DEUX FULLY CONNECTED LAYERS
+    #Two fully connected layers
+    fullyConnected1 = keras.layers.Dense(512, activation='relu')(distance)
+    fullyConnected2 = keras.layers.Dense(512, activation='relu')(fullyConnected1)
 
     #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
+    lastLayer = keras.layers.Dense(2, activation = 'softmax')(fullyConnected2)
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
@@ -181,7 +184,7 @@ class ParametersClass:
     This class stores different parameters used in the code.
     """
     
-    def __init__(self, sizeBatch, numberEpochs, initialLearningRate, numberEpochsLearningRate, discountFactor, widthImage, heightImage, numberWorkers, maxQueueSize, pathLists, pathImages, prefixResults, additionalInformation):
+    def __init__(self, sizeBatch, numberEpochs, initialLearningRate, numberEpochsLearningRate, discountFactor, widthImage, heightImage, numberWorkers, maxQueueSize, pathImages, prefixResults, additionalInformation):
         """
         This is the initialization method.
         
@@ -224,10 +227,11 @@ class ParametersClass:
         return stringInformation
 
 
-def create_pairs(K, data, IDList):
+def sample_pairs(K, data, IDList):
     pairs = []
     labels = []
-    #For each papyrus
+
+    #For each papyrus used for training
     for index in IDList:
         isIndex = data.iloc[:,1]==index
         isNotIndex = data.iloc[:,1]!=index
@@ -258,6 +262,30 @@ def create_pairs(K, data, IDList):
 
     return pairs, labels
 
+def create_pairs(K, data, IDList, IDRange):
+    """
+    Function to create fragment pairs for training and testing.
+    In order to avoid any bias, the papyri used to generate the training pairs are NOT used to generate the testing pairs.
+
+    Parameters:
+    ----------
+        - K: The number of pairs of each type (positive and negative) to sample. Duplicates will be dropped,
+        so the final number of pairs WILL be smaller than 2K
+        - data: CSV file generated using retrieve_annotations_crop.py or retrieve_annotations_alphamask.py
+        - IDList: The list of IDs of the different papyri
+        - IDRange: Defines the range of papyri to use to generate the training pairs. The rest of the papyri
+        will be used to generate the testing pairs.
+
+    Returns:
+    --------
+        - The training pairs and their associated labels, the testing pairs and their associated labels.
+
+    """
+    pairsTrain, labelsTrain = sample_pairs(K, data, IDList[:IDRange])   
+    pairsTest, labelsTest = sample_pairs(K, data, IDList[IDRange:])
+
+    return pairsTrain, labelsTrain, pairsTest, labelsTest
+
 
 if __name__ == "__main__":
     """
@@ -278,36 +306,44 @@ if __name__ == "__main__":
     PAIRS = 4000
     SIZE_BATCH = 32
     NUMBER_EPOCHS = 50
-    INITIAL_LEARNING_RATE = 0.001
+    INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
-    DISCOUNT_FACTOR = 0.1
+    DISCOUNT_FACTOR = 1
     WIDTH_IMAGE = 128
     HEIGHT_IMAGE = 128
+    PROBABILITY_HORIZONTAL_FLIP = 0.5
+    PROBABILITY_VERTICAL_FLIP = 0.0
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""
     PATH_IMAGES = "/scratch/plnicolas/datasets/"
-    PREFIX_RESULTS = "Results/"
-    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using ResNet50 with weights initialized on imagenet. The similarity measure is the Euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    #PATH_CSV = "dataset.csv"
+    PATH_CSV = "/home/plnicolas/codes/dataset.csv"
+    #PREFIX_RESULTS = "Results/"
+    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/"
+    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Papy-S-Net (Pirrone '2019) trained from scratch. The similarity measure is the absolute difference and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
-    data = pandas.read_csv("dataset.csv", sep=",", header=None)
+    data = pandas.read_csv(PATH_CSV, sep=",", header=None)
 
     #IDList constains the ID of each papyrus
     IDList = data.iloc[:,1].drop_duplicates().values
 
-    X, y = create_pairs(PAIRS, data, IDList)
+    #IDRange is the proportion of papyri we will use to generate the training pairs
+    #The remaining papyri will be used to generate the testing pairs => unbiased
+    IDRange = (int) (len(IDList) - (len(IDList)/4))
+    print("IDRange: {}".format(IDRange))
 
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.33, random_state=356)
+    X_train, y_train, X_test, y_test = create_pairs(PAIRS, data, IDList, IDRange)
 
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
     model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
-    learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
-    validationSequence = fs.FragmentSequence(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
+    learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
+    validationSequence = fsv.FragmentSequenceValidation(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
     
     currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, NUMBER_WORKERS, SIZE_BATCH, INITIAL_LEARNING_RATE, MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)
     

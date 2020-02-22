@@ -18,12 +18,20 @@ import skimage.transform
 import multiprocessing
 import numpy.random
 import os
-import random
 import pickle
 
 import FragmentSequence as fs
 import FragmentSequenceValidation as fsv
 
+
+def contrastive_loss(y_true, y_pred):
+    '''Contrastive loss from Hadsell-et-al.'06
+    http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+    '''
+    margin = 1
+    square_pred = K.square(y_pred)
+    margin_square = K.square(K.maximum(margin - y_pred, 0))
+    return K.mean(y_true * square_pred + (1 - y_true) * margin_square)
 
 def euclidean_distance(vects):
     x, y = vects
@@ -54,8 +62,8 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
 
     model = keras.models.Sequential()
 
-    #ResNet50
-    model.add(keras.applications.resnet50.ResNet50(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+    #Xception
+    model.add(keras.applications.xception.Xception(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
     
     #Siamese network; two input images
     model1 = model(a)
@@ -64,18 +72,16 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     #Use the euclidean distance as the similarity measure between the two fragments' feature maps
     distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
 
-    """
-    #Fully connected layer (probably not useful)
+    #Fully connected layer
     fullyConnected = keras.layers.Dense(64, activation='relu')(distance)
-    """
 
     #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
+    lastLayer = keras.layers.Dense(2, activation = 'softmax')(fullyConnected)
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
     
-    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
+    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = contrastive_loss, metrics=['accuracy'])
     
     finalModel.summary()
     
@@ -120,7 +126,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
     
     
-    #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
     return currentTime
 
@@ -302,15 +308,15 @@ if __name__ == "__main__":
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
     PAIRS = 4000
-    SIZE_BATCH = 16
+    SIZE_BATCH = 32
     NUMBER_EPOCHS = 50
     INITIAL_LEARNING_RATE = 0.001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
-    WIDTH_IMAGE = 224
-    HEIGHT_IMAGE = 224
+    WIDTH_IMAGE = 150
+    HEIGHT_IMAGE = 150
     PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.5
+    PROBABILITY_VERTICAL_FLIP = 0.0
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""
@@ -318,8 +324,8 @@ if __name__ == "__main__":
     #PATH_CSV = "dataset.csv"
     PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/ResNet50/"
-    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using ResNet50 with weights initialized on imagenet. The similarity measure is the Euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Xception/"
+    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Xception with weights initialized on imagenet. The similarity measure is the Euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
@@ -338,17 +344,6 @@ if __name__ == "__main__":
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
-    """
-    for i in zip(X_train, y_train):
-        print(i)
-
-    print("STOP")
-
-    for i in zip(X_test, y_test):
-        print(i)
-
-    """
-
     model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
     learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
@@ -359,11 +354,6 @@ if __name__ == "__main__":
     
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
-    #Evaluate the model on test set and compute metrics
-    y_pred = model.predict(validationSequence, batch_size=SIZE_BATCH, verbose=1)
-    y_pred_bool = numpy.argmax(y_pred, axis=1)
-
-    print(classification_report((y_test, y_pred_bool)))
-
+    
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

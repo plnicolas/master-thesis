@@ -28,13 +28,12 @@ import FragmentSequenceValidation as fsv
 
 def euclidean_distance(vects):
     x, y = vects
-    sum_square = K.sum(K.square(x - y), axis=1, keepdims=True)
-    return K.sqrt(K.maximum(sum_square, K.epsilon()))
+    sumSquare = K.sum(K.square(x - y), axis=1, keepdims=True)
+    return K.sqrt(K.maximum(sumSquare, K.epsilon()))
 
 def eucl_dist_output_shape(shapes):
     shape1, shape2 = shapes
     return (shape1[0], 1)
-
 
 def create_neural_network(widthImage, heightImage, initialLearningRate):
     """
@@ -54,29 +53,42 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     b = keras.layers.Input((heightImage, widthImage, 3))
 
     model = keras.models.Sequential()
+    
+    #Simple CNN
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
-    #ResNet50
-    model.add(keras.applications.resnet50.ResNet50(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+
+    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
+    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
+    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
+
+    model.add(keras.layers.Flatten())
     
     #Siamese network; two input images
     model1 = model(a)
     model2 = model(b)
 
-    #Use the euclidean distance as the similarity measure between the two fragments' feature maps
-    distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
-
-    """
-    #Fully connected layer (probably not useful)
-    fullyConnected = keras.layers.Dense(64, activation='relu')(distance)
-    """
-
-    #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
+    #Use the euclidean as the similarity measure between the two fragments' feature maps
+    lastLayer = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
+
+    def contrastive_loss(y_true, y_pred):
+        '''Contrastive loss from Hadsell-et-al.'06
+        http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
+        '''
+        margin = 1
+        squarePred = K.square(y_pred)
+        marginSquare = K.square(K.maximum(margin - y_pred, 0))
+        return K.mean((1 - y_true) * squarePred + y_true * marginSquare)
     
-    
-    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
+    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = contrastive_loss, metrics=['accuracy'])
     
     finalModel.summary()
     
@@ -121,7 +133,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
     
     
-    #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
     return currentTime
 
@@ -259,6 +271,12 @@ def sample_pairs(K, data, IDList):
                 pairs.append(pair)
                 labels.append(0)
 
+    #Shuffle the pairs and label lists before returning them
+    #The two lists are shuffled at once with the same order, of course
+    tmp = list(zip(pairs, labels))
+    random.shuffle(tmp)
+    pairs, labels = zip(*tmp)
+
     return pairs, labels
 
 def create_pairs(K, data, IDList, IDRange):
@@ -302,25 +320,25 @@ if __name__ == "__main__":
     PREFIX_RESULTS: The prefix of the path where to store the results.
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
-    PAIRS = 4000
+    PAIRS = 1000
     SIZE_BATCH = 16
-    NUMBER_EPOCHS = 50
+    NUMBER_EPOCHS = 5
     INITIAL_LEARNING_RATE = 0.001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
     WIDTH_IMAGE = 224
     HEIGHT_IMAGE = 224
     PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.5
+    PROBABILITY_VERTICAL_FLIP = 0.0
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
-    #PATH_IMAGES = ""
-    PATH_IMAGES = "/scratch/plnicolas/datasets/"
-    #PATH_CSV = "dataset.csv"
-    PATH_CSV = "/home/plnicolas/codes/dataset.csv"
-    #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/ResNet50/"
-    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using ResNet50 with weights initialized on imagenet. The similarity measure is the Euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    PATH_IMAGES = ""
+    #PATH_IMAGES = "/scratch/plnicolas/datasets/"
+    PATH_CSV = "dataset.csv"
+    #PATH_CSV = "/home/plnicolas/codes/dataset.csv"
+    PREFIX_RESULTS = "Results/"
+    #PREFIX_RESULTS = "/home/plnicolas/codes/Results/HieraNet/"
+    ADDITIONAL_INFORMATION = "This model implements HieraNet trained from scratch. The similarity measure is the euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the contrastive loss. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
@@ -339,30 +357,20 @@ if __name__ == "__main__":
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
-    """
-    for i in zip(X_train, y_train):
-        print(i)
-
-    print("STOP")
-
-    for i in zip(X_test, y_test):
-        print(i)
-
-    """
-
     model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
     learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
     validationSequence = fsv.FragmentSequenceValidation(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
     
-    currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, NUMBER_WORKERS, SIZE_BATCH, INITIAL_LEARNING_RATE, MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)
-    
+    currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, NUMBER_WORKERS, SIZE_BATCH, INITIAL_LEARNING_RATE, MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)    
     
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
     #Evaluate the model on test set and compute metrics
     y_pred = model.predict_generator(validationSequence, max_queue_size = MAX_QUEUE_SIZE, workers = NUMBER_WORKERS, use_multiprocessing = True)
     y_pred_bool = numpy.argmax(y_pred, axis=1)
+
+    print(y_pred)
 
     print(classification_report((y_test, y_pred_bool)))
 

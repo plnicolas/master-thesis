@@ -1,6 +1,7 @@
 import numpy as np
 import pandas
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 import keras
 from keras import backend as K
 import keras.utils
@@ -18,6 +19,7 @@ import skimage.transform
 import multiprocessing
 import numpy.random
 import os
+import random
 import pickle
 
 import FragmentSequence as fs
@@ -122,7 +124,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
     
     
-    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
     return currentTime
 
@@ -248,7 +250,7 @@ def sample_pairs(K, data, IDList):
             pair = [p1List.values[k], p2List.values[k]]
             if pair not in pairs:
                 pairs.append(pair)
-                labels.append(0)
+                labels.append(1)
         
         #K positive pairs
         p1List = indexTrueList.sample(n=K, replace=True, random_state=362)
@@ -258,7 +260,7 @@ def sample_pairs(K, data, IDList):
             pair = [p1List.values[k], p2List.values[k]]
             if pair not in pairs:
                 pairs.append(pair)
-                labels.append(1)
+                labels.append(0)
 
     return pairs, labels
 
@@ -304,7 +306,7 @@ if __name__ == "__main__":
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
     PAIRS = 4000
-    SIZE_BATCH = 32
+    SIZE_BATCH = 16
     NUMBER_EPOCHS = 50
     INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
@@ -312,7 +314,7 @@ if __name__ == "__main__":
     WIDTH_IMAGE = 128
     HEIGHT_IMAGE = 128
     PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.0
+    PROBABILITY_VERTICAL_FLIP = 0.5
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""
@@ -350,6 +352,11 @@ if __name__ == "__main__":
     
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
+    #Evaluate the model on test set and compute metrics
+    y_pred = model.predict_generator(validationSequence, max_queue_size = MAX_QUEUE_SIZE, workers = NUMBER_WORKERS, use_multiprocessing = True)
+    y_pred_bool = numpy.argmax(y_pred, axis=1)
+
+    print(classification_report((y_test, y_pred_bool)))
     
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

@@ -1,13 +1,14 @@
 import numpy as np
 import pandas
 from sklearn.model_selection import train_test_split
+from sklearn.metrics import classification_report
 import keras
 from keras import backend as K
 import keras.utils
 import keras.models
 import keras.layers
 import keras.callbacks
-import keras.applications.nasnet
+import keras.applications.xception
 import keras.metrics
 import keras.preprocessing.image
 import keras.optimizers
@@ -18,20 +19,12 @@ import skimage.transform
 import multiprocessing
 import numpy.random
 import os
+import random
 import pickle
 
 import FragmentSequence as fs
 import FragmentSequenceValidation as fsv
 
-
-def contrastive_loss(y_true, y_pred):
-    '''Contrastive loss from Hadsell-et-al.'06
-    http://yann.lecun.com/exdb/publis/pdf/hadsell-chopra-lecun-06.pdf
-    '''
-    margin = 1
-    square_pred = K.square(y_pred)
-    margin_square = K.square(K.maximum(margin - y_pred, 0))
-    return K.mean(y_true * square_pred + (1 - y_true) * margin_square)
 
 def euclidean_distance(vects):
     x, y = vects
@@ -63,7 +56,7 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     model = keras.models.Sequential()
 
     #Xception
-    model.add(keras.applications.xception.Xception(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+    model.add(keras.applications.xception.Xception(include_top = False, weights = None, input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
     
     #Siamese network; two input images
     model1 = model(a)
@@ -72,16 +65,18 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     #Use the euclidean distance as the similarity measure between the two fragments' feature maps
     distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
 
-    #Fully connected layer
+    """
+    #Fully connected layer (probably not useful)
     fullyConnected = keras.layers.Dense(64, activation='relu')(distance)
+    """
 
     #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(fullyConnected)
+    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
     
-    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = contrastive_loss, metrics=['accuracy'])
+    finalModel.compile(optimizer = keras.optimizers.Adam(lr = initialLearningRate), loss = keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
     
     finalModel.summary()
     
@@ -110,23 +105,26 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     
     currentTime = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
     
-    if not os.path.exists(prefixResults + currentTime):
-        os.makedirs(prefixResults + currentTime)
+    pathResults = prefixResults + "NW" + currentTime
+
+    if not os.path.exists(pathResults):
+        os.makedirs(pathResults)
     
-    with open("{}/information_model.txt".format(prefixResults + currentTime), mode = "w") as informationFile:
+    with open("{}/information_model.txt".format(pathResults), mode = "w") as informationFile:
         informationFile.write(stringInformation)
     
     
-    tensorboardLogger = keras.callbacks.TensorBoard(log_dir = "{}/tensorboard_log".format(prefixResults + currentTime), histogram_freq = 0, batch_size = batchSize, write_grads = False, write_images = True, update_freq = "epoch")
+    tensorboardLogger = keras.callbacks.TensorBoard(log_dir = "{}/tensorboard_log".format(pathResults), histogram_freq = 0, batch_size = batchSize, write_grads = False, write_images = True, update_freq = "epoch")
     
-    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(prefixResults + currentTime), separator = ",")
-    learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
+    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator = ",")
+    #learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
+    reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
 
     
-    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
+    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, reduceLR], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
     
     
-    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
     return currentTime
 
@@ -247,22 +245,26 @@ def sample_pairs(K, data, IDList):
         #K negative pairs
         p1List = indexTrueList.sample(n=K, replace=True, random_state=356)
         p2List = indexFalseList.sample(n=K, replace=True, random_state=323)
-        #pairs.append(pandas.concat([p1.reset_index(drop=True), p2.reset_index(drop=True)], axis=1).values)
-        for k in range(K):
-            pair = [p1List.values[k], p2List.values[k]]
-            if pair not in pairs:
-                pairs.append(pair)
-                labels.append(0)
-        
-        #K positive pairs
-        p1List = indexTrueList.sample(n=K, replace=True, random_state=362)
-        p2List = indexTrueList.sample(n=K, replace=True, random_state=316)
-        #pairs.append(pandas.concat([p1.reset_index(drop=True), p2.reset_index(drop=True)], axis=1).values)
         for k in range(K):
             pair = [p1List.values[k], p2List.values[k]]
             if pair not in pairs:
                 pairs.append(pair)
                 labels.append(1)
+        
+        #K positive pairs
+        p1List = indexTrueList.sample(n=K, replace=True, random_state=362)
+        p2List = indexTrueList.sample(n=K, replace=True, random_state=316)
+        for k in range(K):
+            pair = [p1List.values[k], p2List.values[k]]
+            if pair not in pairs:
+                pairs.append(pair)
+                labels.append(0)
+
+    #Shuffle the pairs and label lists before returning them
+    #The two lists are shuffled at once with the same order, of course
+    tmp = list(zip(pairs, labels))
+    random.shuffle(tmp)
+    pairs, labels = zip(*tmp)
 
     return pairs, labels
 
@@ -308,15 +310,15 @@ if __name__ == "__main__":
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
     PAIRS = 4000
-    SIZE_BATCH = 32
-    NUMBER_EPOCHS = 50
-    INITIAL_LEARNING_RATE = 0.001
+    SIZE_BATCH = 16
+    NUMBER_EPOCHS = 40
+    INITIAL_LEARNING_RATE = 0.01
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
-    WIDTH_IMAGE = 150
-    HEIGHT_IMAGE = 150
+    WIDTH_IMAGE = 224
+    HEIGHT_IMAGE = 224
     PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.0
+    PROBABILITY_VERTICAL_FLIP = 0.5
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""
@@ -325,7 +327,7 @@ if __name__ == "__main__":
     PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
     PREFIX_RESULTS = "/home/plnicolas/codes/Results/Xception/"
-    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Xception with weights initialized on imagenet. The similarity measure is the Euclidean distance and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    ADDITIONAL_INFORMATION = "Xception with no weight initialization and euclidean distance. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
@@ -344,6 +346,17 @@ if __name__ == "__main__":
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
+    """
+    for i in zip(X_train, y_train):
+        print(i)
+
+    print("STOP")
+
+    for i in zip(X_test, y_test):
+        print(i)
+
+    """
+
     model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
     
     learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
@@ -354,6 +367,13 @@ if __name__ == "__main__":
     
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
-    
+    #Evaluate the model on test set and compute metrics
+    y_pred = model.predict_generator(validationSequence, max_queue_size = MAX_QUEUE_SIZE, workers = NUMBER_WORKERS, use_multiprocessing = True)
+    y_pred_bool = numpy.argmax(y_pred, axis=1)
+
+    print(y_pred[:100].tolist())
+
+    print(classification_report(y_test, y_pred_bool))
+
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

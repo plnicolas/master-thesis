@@ -8,7 +8,7 @@ import keras.utils
 import keras.models
 import keras.layers
 import keras.callbacks
-import keras.applications.xception
+import keras.applications.resnet50
 import keras.metrics
 import keras.preprocessing.image
 import keras.optimizers
@@ -55,8 +55,8 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
 
     model = keras.models.Sequential()
 
-    #Xception
-    model.add(keras.applications.xception.Xception(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+    #ResNet50
+    model.add(keras.applications.resnet50.ResNet50(include_top = False, weights = None, input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
     
     #Siamese network; two input images
     model1 = model(a)
@@ -105,7 +105,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     
     currentTime = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
     
-    pathResults = prefixResults + currentTime
+    pathResults = prefixResults + "NW" + currentTime
 
     if not os.path.exists(pathResults):
         os.makedirs(pathResults)
@@ -326,8 +326,8 @@ if __name__ == "__main__":
     #PATH_CSV = "dataset.csv"
     PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Xception/"
-    ADDITIONAL_INFORMATION = "Xception with ImageNet weights and euclidean distance. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    PREFIX_RESULTS = "/home/plnicolas/codes/Results/ResNet50/"
+    ADDITIONAL_INFORMATION = "ResNet50 with no weight initialization and euclidean distance. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     

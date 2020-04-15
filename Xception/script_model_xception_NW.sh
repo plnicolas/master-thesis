@@ -1,7 +1,7 @@
 #!/bin/bash
 #
-#SBATCH --job-name=TRAIN-XCEPTION-CL
-#SBATCH --output=/home/plnicolas/outputs/modelxceptionCL.txt
+#SBATCH --job-name=TRAIN-XCEPTION-NW
+#SBATCH --output=/home/plnicolas/outputs/modelxception_NW.txt
 #
 #SBATCH --ntasks=1
 #SBATCH --time=48:00:00
@@ -10,4 +10,4 @@
 #SBATCH --gres=gpu:1
 
 echo "Running Xception..."
-srun python model_xception_contrastive_loss.py
+srun python model_xception_NW.py

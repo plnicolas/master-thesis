@@ -56,22 +56,22 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     model = keras.models.Sequential()
 
     #Xception
-    model.add(keras.applications.xception.Xception(include_top = False, weights = 'imagenet', input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
+    model.add(keras.applications.xception.Xception(include_top = False, weights = None, input_shape = (heightImage, widthImage, 3), pooling = 'avg'))
     
     #Siamese network; two input images
     model1 = model(a)
     model2 = model(b)
 
-    #Use the euclidean distance as the similarity measure between the two fragments' feature maps
-    distance = keras.layers.Lambda(euclidean_distance, output_shape = eucl_dist_output_shape)([model1, model2])
+    #Use the absolute difference as the similarity measure between the two fragments' feature maps
+    sub = keras.layers.Subtract()([model1, model2])
+    distance = keras.layers.Lambda(keras.backend.abs)(sub)
 
-    """
-    #Fully connected layer (probably not useful)
-    fullyConnected = keras.layers.Dense(64, activation='relu')(distance)
-    """
+    #Two fully connected layers
+    fullyConnected1 = keras.layers.Dense(512, activation='relu')(distance)
+    fullyConnected2 = keras.layers.Dense(512, activation='relu')(fullyConnected1)
 
     #Binary classification: same papyrus or not
-    lastLayer = keras.layers.Dense(2, activation = 'softmax')(distance)
+    lastLayer = keras.layers.Dense(2, activation = 'softmax')(fullyConnected2)
 
     finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
     
@@ -105,8 +105,8 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     
     currentTime = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
     
-    pathResults = prefixResults + currentTime
-
+    pathResults = prefixResults + "NWsubfull" +currentTime
+    
     if not os.path.exists(pathResults):
         os.makedirs(pathResults)
     
@@ -119,7 +119,6 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator = ",")
     #learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
     reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
-
     
     model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, reduceLR], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
     
@@ -312,7 +311,7 @@ if __name__ == "__main__":
     PAIRS = 4000
     SIZE_BATCH = 16
     NUMBER_EPOCHS = 40
-    INITIAL_LEARNING_RATE = 0.01
+    INITIAL_LEARNING_RATE = 0.00001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
     WIDTH_IMAGE = 224
@@ -327,7 +326,7 @@ if __name__ == "__main__":
     PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
     PREFIX_RESULTS = "/home/plnicolas/codes/Results/Xception/"
-    ADDITIONAL_INFORMATION = "Xception with ImageNet weights and euclidean distance. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    ADDITIONAL_INFORMATION = "Xception with no weight initialization and subfull. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     

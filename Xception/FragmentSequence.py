@@ -128,7 +128,7 @@ class FragmentSequence(keras.utils.Sequence):
             #Picture 1
             picture1 = np.expand_dims(picture1, axis=0)
             #Should be replaced by the appropriate network-specific preprocessing function
-            picture1 = keras.applications.resnet50.preprocess_input(picture1)
+            picture1 = keras.applications.xception.preprocess_input(picture1)
             picture1 = picture1[0]
             
             randomY = np.random.randint(0, picture1.shape[0] - self.heightImage + 1)
@@ -139,7 +139,7 @@ class FragmentSequence(keras.utils.Sequence):
             #Picture 2
             picture2 = np.expand_dims(picture2, axis=0)
             #Should be replaced by the appropriate network-specific preprocessing function
-            picture2 = keras.applications.resnet50.preprocess_input(picture2)
+            picture2 = keras.applications.xception.preprocess_input(picture2)
             picture2 = picture2[0]
             
             randomY = np.random.randint(0, picture2.shape[0] - self.heightImage + 1)

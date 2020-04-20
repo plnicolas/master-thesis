@@ -121,7 +121,7 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
 
     
-    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
+    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
     
     
     #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
@@ -262,6 +262,12 @@ def sample_pairs(K, data, IDList):
                 pairs.append(pair)
                 labels.append(0)
 
+    #Shuffle the pairs and label lists before returning them
+    #The two lists are shuffled at once with the same order, of course
+    tmp = list(zip(pairs, labels))
+    random.shuffle(tmp)
+    pairs, labels = zip(*tmp)
+
     return pairs, labels
 
 def create_pairs(K, data, IDList, IDRange):
@@ -307,7 +313,7 @@ if __name__ == "__main__":
     """
     PAIRS = 4000
     SIZE_BATCH = 16
-    NUMBER_EPOCHS = 50
+    NUMBER_EPOCHS = 40
     INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 1
@@ -356,7 +362,9 @@ if __name__ == "__main__":
     y_pred = model.predict_generator(validationSequence, max_queue_size = MAX_QUEUE_SIZE, workers = NUMBER_WORKERS, use_multiprocessing = True)
     y_pred_bool = numpy.argmax(y_pred, axis=1)
 
-    print(classification_report((y_test, y_pred_bool)))
+    print(y_pred[:100].tolist())
+
+    print(classification_report(y_test, y_pred_bool))
     
     with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

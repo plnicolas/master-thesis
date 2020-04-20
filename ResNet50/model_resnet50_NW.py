@@ -375,5 +375,5 @@ if __name__ == "__main__":
 
     print(classification_report(y_test, y_pred_bool))
 
-    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
+    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + "NW" + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

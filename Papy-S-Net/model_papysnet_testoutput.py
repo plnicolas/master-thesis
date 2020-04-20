@@ -40,14 +40,14 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     --------
     - model: The compiled neural network model created.
     """
-    a = keras.layers.Input((heightImage, widthImage, 4))
-    b = keras.layers.Input((heightImage, widthImage, 4))
+    a = keras.layers.Input((heightImage, widthImage, 3))
+    b = keras.layers.Input((heightImage, widthImage, 3))
 
     model = keras.models.Sequential()
     
     #Papy-S-Net (Pirrone et al. 2019)
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 4)))
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 4)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
     model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
 
@@ -120,9 +120,15 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(prefixResults + currentTime), separator = ",")
     learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
 
-    
-    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
-    
+    for i in range(10):
+        model.fit_generator(learningSetGenerator, epochs = 1, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
+        #Evaluate the model on test set and compute metrics
+        y_pred = model.predict_generator(validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True)
+        y_pred_bool = numpy.argmax(y_pred, axis=1)
+
+        print(y_pred[:100].tolist())
+
+        print(classification_report(y_test, y_pred_bool))
     
     #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
     
@@ -313,7 +319,7 @@ if __name__ == "__main__":
     """
     PAIRS = 4000
     SIZE_BATCH = 16
-    NUMBER_EPOCHS = 40
+    NUMBER_EPOCHS = 10
     INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 1
@@ -326,12 +332,12 @@ if __name__ == "__main__":
     #PATH_IMAGES = ""
     PATH_IMAGES = "/scratch/plnicolas/datasets/"
     #PATH_CSV = "dataset.csv"
-    PATH_CSV = "/home/plnicolas/codes/dataset_alpha.csv"
+    PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/Alpha/"
+    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/"
     ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Papy-S-Net (Pirrone '2019) trained from scratch. The similarity measure is the absolute difference and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
-    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
+    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
     data = pandas.read_csv(PATH_CSV, sep=",", header=None)
 
@@ -354,17 +360,5 @@ if __name__ == "__main__":
     validationSequence = fsv.FragmentSequenceValidation(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
     
     currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, NUMBER_WORKERS, SIZE_BATCH, INITIAL_LEARNING_RATE, MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)
-    
-    
+        
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
-    
-    #Evaluate the model on test set and compute metrics
-    y_pred = model.predict_generator(validationSequence, max_queue_size = MAX_QUEUE_SIZE, workers = NUMBER_WORKERS, use_multiprocessing = True)
-    y_pred_bool = numpy.argmax(y_pred, axis=1)
-
-    print(y_pred[:100].tolist())
-
-    print(classification_report(y_test, y_pred_bool))
-    
-    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
-        pickle.dump(parametersClass, f)

@@ -40,14 +40,14 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
     --------
     - model: The compiled neural network model created.
     """
-    a = keras.layers.Input((heightImage, widthImage, 4))
-    b = keras.layers.Input((heightImage, widthImage, 4))
+    a = keras.layers.Input((heightImage, widthImage, 3))
+    b = keras.layers.Input((heightImage, widthImage, 3))
 
     model = keras.models.Sequential()
     
     #Papy-S-Net (Pirrone et al. 2019)
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 4)))
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 4)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
+    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
     model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
 
 
@@ -108,16 +108,18 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     
     currentTime = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
     
-    if not os.path.exists(prefixResults + currentTime):
-        os.makedirs(prefixResults + currentTime)
+    pathResults = prefixResults + "noDA" + currentTime
+
+    if not os.path.exists(pathResults):
+        os.makedirs(pathResults)
     
-    with open("{}/information_model.txt".format(prefixResults + currentTime), mode = "w") as informationFile:
+    with open("{}/information_model.txt".format(pathResults), mode = "w") as informationFile:
         informationFile.write(stringInformation)
     
     
-    tensorboardLogger = keras.callbacks.TensorBoard(log_dir = "{}/tensorboard_log".format(prefixResults + currentTime), histogram_freq = 0, batch_size = batchSize, write_grads = False, write_images = True, update_freq = "epoch")
+    tensorboardLogger = keras.callbacks.TensorBoard(log_dir = "{}/tensorboard_log".format(pathResults), histogram_freq = 0, batch_size = batchSize, write_grads = False, write_images = True, update_freq = "epoch")
     
-    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(prefixResults + currentTime), separator = ",")
+    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator = ",")
     learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
 
     
@@ -319,19 +321,19 @@ if __name__ == "__main__":
     DISCOUNT_FACTOR = 1
     WIDTH_IMAGE = 128
     HEIGHT_IMAGE = 128
-    PROBABILITY_HORIZONTAL_FLIP = 0.5
-    PROBABILITY_VERTICAL_FLIP = 0.5
+    PROBABILITY_HORIZONTAL_FLIP = 0.0
+    PROBABILITY_VERTICAL_FLIP = 0.0
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     #PATH_IMAGES = ""
     PATH_IMAGES = "/scratch/plnicolas/datasets/"
     #PATH_CSV = "dataset.csv"
-    PATH_CSV = "/home/plnicolas/codes/dataset_alpha.csv"
+    PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/Alpha/"
+    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/"
     ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Papy-S-Net (Pirrone '2019) trained from scratch. The similarity measure is the absolute difference and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
     
-    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
+    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nNUMBER_WORKERS: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, NUMBER_WORKERS, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
     
     data = pandas.read_csv(PATH_CSV, sep=",", header=None)
 
@@ -366,5 +368,5 @@ if __name__ == "__main__":
 
     print(classification_report(y_test, y_pred_bool))
     
-    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
+    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + "noDA" + currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

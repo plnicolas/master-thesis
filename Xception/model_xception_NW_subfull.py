@@ -117,10 +117,10 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     tensorboardLogger = keras.callbacks.TensorBoard(log_dir = "{}/tensorboard_log".format(pathResults), histogram_freq = 0, batch_size = batchSize, write_grads = False, write_images = True, update_freq = "epoch")
     
     csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator = ",")
-    #learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
-    reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
+    learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose = 1)
+    #reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
     
-    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, reduceLR], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
+    model.fit_generator(learningSetGenerator, epochs = numberEpochs, callbacks = [tensorboardLogger, csvLogger, learningRateScheduler], validation_data = validationSetGenerator, max_queue_size = maxQueueSize, workers = numberWorkers, use_multiprocessing = True, verbose = 2)
     
     
     #model.save("{}/model_trained.h5".format(prefixResults + currentTime))
@@ -311,7 +311,7 @@ if __name__ == "__main__":
     PAIRS = 4000
     SIZE_BATCH = 16
     NUMBER_EPOCHS = 40
-    INITIAL_LEARNING_RATE = 0.00001
+    INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
     WIDTH_IMAGE = 224
@@ -374,5 +374,5 @@ if __name__ == "__main__":
 
     print(classification_report(y_test, y_pred_bool))
 
-    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + currentTime), "wb") as f:
+    with open("{}/information_model_binary.pkl".format(PREFIX_RESULTS + "NWsubfull" +currentTime), "wb") as f:
         pickle.dump(parametersClass, f)

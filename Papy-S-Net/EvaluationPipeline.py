@@ -9,7 +9,7 @@ from sklearn.metrics import classification_report
 from sklearn.metrics import precision_recall_curve
 from sklearn.metrics import average_precision_score
 from sklearn.metrics import roc_curve
-from sklearn.metrics import roc_auc_score
+from sklearn.metrics import auc
 from sklearn.manifold import TSNE
 from sklearn.manifold import MDS
 
@@ -239,10 +239,10 @@ def plot_curves(y_pred, y_true, N, pathResults):
 
         # Compute precisions and recalls for different thresholds
         # Positive label is 1 because y_pred has probabilities 
-        precisions, recalls, thresholds = precision_recall_curve(trueLabels, predLabels, pos_label=1)
-        aupr = average_precision_score(trueLabels, predLabels, pos_label=1)
-        fpr, tpr, thresholds = roc_curve(trueLabels, predLabels, pos_label=1)
-        auc = roc_auc_score(trueLabels, predLabels)
+        precisions, recalls, thresholds = precision_recall_curve(trueLabels, predLabels, pos_label=0)
+        aupr = average_precision_score(trueLabels, predLabels, pos_label=0)
+        fpr, tpr, thresholds = roc_curve(trueLabels, predLabels, pos_label=0)
+        AUC = auc(fpr, tpr)
         
 
         # Store into a list
@@ -251,7 +251,7 @@ def plot_curves(y_pred, y_true, N, pathResults):
         auprList.append(aupr)
         fprList.append(fpr)
         tprList.append(tpr)
-        aucList.append(auc)
+        aucList.append(AUC)
 
     # Create DataFrame to easily compute mean vectors
     precisionDF = pandas.DataFrame(precisionsList)

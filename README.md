@@ -6,7 +6,7 @@
 - The [**Cytomine** python client](https://github.com/cytomine/Cytomine-python-client) is required to download the dataset from the servers of Cytomine.
 
 ## Installation
-- A suitable Anaconda environment can be created using the requirements.txt file at the root of the project, for convenience.
+- A suitable Anaconda environment can be created using the `setup.sh` script at the root of the project, for convenience. It will create a new environment called "deeplearning" with all the required packages (Cytomine included).
 - To download the dataset from the Cytomine server, at the root of the project, use the command:
   - `python retrieve_annotations_crop.py`
   - This will download the dataset at the root of the project and generate a `dataset.csv` file.

@@ -38,23 +38,15 @@ import FragmentSequenceValidation as fsv
 
 PAIRS = 4000
 SIZE_BATCH = 16
-NUMBER_EPOCHS = 40
-INITIAL_LEARNING_RATE = 0.01
-NUMBER_EPOCHS_LEARNING_RATE = 20
-DISCOUNT_FACTOR = 0.1
 WIDTH_IMAGE = 224
 HEIGHT_IMAGE = 224
-PROBABILITY_HORIZONTAL_FLIP = 0.5
-PROBABILITY_VERTICAL_FLIP = 0.5
 MAX_QUEUE_SIZE = 50
 
-#PATH_IMAGES = ""
 PATH_IMAGES = "/scratch/plnicolas/datasets/"
 
 ###############################################
 # EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
 ###############################################
-
 
 def __test_IDs_list__(data):
     """
@@ -163,7 +155,7 @@ def run_TSNE(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot TSNE
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("TSNE")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -180,40 +172,16 @@ def run_MDS(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot MDS
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("MDS")
     plt.tight_layout()
     fig = graph.get_figure()
     fig.savefig('{}MDS.png'.format(pathResults))
     plt.clf()
 
-def print_classification_report(y_pred, y_true):
-    """
-    Print the classification report given some predictions.
-
-    Parameters:
-    ----------
-        - y_pred: The predictions of some model.
-        - y_true: The true labels.
-
-    Returns:
-    --------
-        - /
-
-    """
-
-    # Argmax because we want the class (= index), not the probability of the input belonging to the class
-    #(for ROC curve or Precision-Recall curve, take the value at index ???? instead of the argmax)
-    y_pred_bool = np.argmax(y_pred, axis=1)
-
-    print(classification_report(y_true, y_pred_bool))
-
-
 def plot_curves(y_pred, y_true, N, pathResults):
 
     # Only keep the predicted probability for class 0 (=similar)
-    # /!\ This means y_pred has values in [0;1] and the positive class is no longer 0,
-    # but 1 !
     y_pred = y_pred[:, 0]
 
     # Convert the prediction vector to a prediction matrix
@@ -242,7 +210,7 @@ def plot_curves(y_pred, y_true, N, pathResults):
         trueLabels = labelMatrix[fragment]
 
         # Compute precisions and recalls for different thresholds
-        # Positive label is 1 because y_pred has probabilities 
+        # Positive label is 0
         precisions, recalls, thresholds = precision_recall_curve(trueLabels, predLabels, pos_label=0)
         aupr = average_precision_score(trueLabels, predLabels, pos_label=0)
         fpr, tpr, thresholds = roc_curve(trueLabels, predLabels, pos_label=0)
@@ -357,6 +325,63 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     plt.savefig("{}dendrogram.png".format(pathResults))
     plt.clf()
 
+def sample_predictions_ranked(distanceMatrix, data, numberOfFragments, N, k):
+    """
+    Sample N fragments from the dataset and display the k fragments closest to it.
+
+    Parameters:
+    ----------
+        - distanceMatrix: A distance matrix giving the distance between fragments.
+        - data: The list of fragments (paths to their image), as a dataframe extracted from CSV
+        - numberOfFragments: The total number of test fragments.
+        - N: Number of target fragments to consider.
+        - k: Number of closest fragments to display.
+
+    Returns:
+    --------
+        - /
+    """
+    
+    # Generate a list with values in range [0,numberOfFragments-1]
+    # (random.sample wants a list)
+    fragmentList = data.iloc[:,0].values
+    IDList = data.iloc[:,1].values
+
+    x = []
+    for i in range(numberOfFragments):
+        x.append(i)
+
+    fragmentIndices = random.sample(x, N)
+
+    # For each sampled fragment
+    for i in fragmentIndices:
+        # Get its corresponding line in the distance matrix
+        line = distanceMatrix[i]
+
+        # Get index of k closest fragments (= smallest values)
+        kBestIndices = np.argpartition(line, k)[k:]
+
+        # Retrieve images and display
+        imgTarget = io.imread(PATH_IMAGES + fragmentList[i])
+        io.imsave("Fragment{}_0.png".format(i), imgTarget)
+        io.imshow(imgTarget)
+        plt.clf()
+        fig = plt.figure("Top-{} fragments".format(k))
+        l = 1
+        for j in kBestIndices:
+            ax = fig.add_subplot(1, k, l)
+            if IDList[i] == IDList[j]:
+                ax.set_title("Similar")
+            else:
+                ax.set_title("Dissimilar")
+            img = io.imread(PATH_IMAGES + fragmentList[j])
+            plt.imshow(img)
+            plt.axis("off")
+            plt.tight_layout()
+            l = l + 1
+        plt.savefig("Fragment{}_results.png".format(i))
+        plt.clf()
+
 def run_pipeline(model, pathCSV, pathResults):
     """
     Run the complete evaluation pipeline.
@@ -384,13 +409,7 @@ def run_pipeline(model, pathCSV, pathResults):
     testData = data[data.iloc[:,1].isin(testIDList)]
 
     # Replace papyrus IDs with "Papyrus 1", "Papyrus 2" etc
-    stringList = []
-    i = 1
-    while i <= len(testIDList):
-        tmp = "Papyrus {}".format(i)
-        stringList.append(tmp)
-        i += 1
-
+    stringList = ["Papyrus 1", "Papyrus 2", "Papyrus 3", "Papyrus 4", "Papyrus 5", "Papyrus 6"]
     testData = testData.replace(testIDList, stringList)
 
     #Generate all possible pairs of test fragments
@@ -404,16 +423,11 @@ def run_pipeline(model, pathCSV, pathResults):
     # Get prediction of the model for each fragment pair
     y_pred = model.predict_generator(testSequence, max_queue_size=MAX_QUEUE_SIZE, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=1)
 
-    # Print the global classification report
-    #print_classification_report(y_pred, labels)
-
-
     # Get the distance matrix from the predictions
     distanceMatrix = get_distance_matrix(y_pred, numberOfFragments, pairs, labels)
     distanceMatrix = check_symmetric(distanceMatrix)
 
-    #a = np.random.rand(numberOfFragments, numberOfFragments)
-    #distanceMatrix = np.tril(a) + np.tril(a, -1).T
+    #sample_predictions_ranked(distanceMatrix, testData, numberOfFragments, 30, 5)
 
     # Run TSNE and MDS and plot results
     run_TSNE(testData, distanceMatrix, pathResults)

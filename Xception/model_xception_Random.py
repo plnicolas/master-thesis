@@ -8,6 +8,7 @@ import keras.utils
 import keras.models
 import keras.layers
 import keras.callbacks
+import keras.applications.xception
 import keras.metrics
 import keras.preprocessing.image
 import keras.optimizers
@@ -21,14 +22,21 @@ import os
 import random
 import pickle
 
-from argparse import ArgumentParser
-
 import EvaluationPipeline
 import PairGenerator
 
 import FragmentSequence as fs
-import FragmentSequenceBright as fsb
 import FragmentSequenceValidation as fsv
+
+from keras.models import Model
+# This function is needed to be able to save/load the model
+# (weird workaround for a TF bug...)
+def freeze_layers(model):
+    for i in model.layers:
+        i.trainable = False
+        if isinstance(i, Model):
+            freeze_layers(i)
+    return model
 
 def create_neural_network(widthImage, heightImage, initialLearningRate):
     """
@@ -49,29 +57,14 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
 
     model = keras.models.Sequential()
 
-    # Papy-S-Net (Pirrone et al. 2019)
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(
-        1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
-    model.add(keras.layers.Conv2D(64, kernel_size=(3, 3), strides=(
-        1, 1), activation='relu', input_shape=(heightImage, widthImage, 3)))
-    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2), strides=(2, 2)))
-
-    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
-    model.add(keras.layers.Conv2D(128, (3, 3), activation='relu'))
-    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-
-    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
-    model.add(keras.layers.Conv2D(256, (3, 3), activation='relu'))
-    model.add(keras.layers.MaxPooling2D(pool_size=(2, 2)))
-
-    model.add(keras.layers.Flatten())
+    # Xception
+    model.add(keras.applications.xception.Xception(include_top=False, weights=None, input_shape=(heightImage, widthImage, 3), pooling='avg'))
 
     # Siamese network; two input images
     model1 = model(a)
     model2 = model(b)
 
-    # Use the absolute difference as the similarity measure between the two
-    # fragments' feature maps
+    # Use the absolute difference as the similarity measure between the two fragments' feature maps
     sub = keras.layers.Subtract()([model1, model2])
     distance = keras.layers.Lambda(keras.backend.abs)(sub)
 
@@ -112,19 +105,23 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
 
     currentTime = datetime.datetime.now().strftime("%d_%m_%Y_%H_%M_%S")
 
-    if not os.path.exists(prefixResults + currentTime):
-        os.makedirs(prefixResults + currentTime)
+    pathResults = prefixResults + currentTime
 
-    with open("{}/information_model.txt".format(prefixResults + currentTime), mode="w") as informationFile:
+    if not os.path.exists(pathResults):
+        os.makedirs(pathResults)
+
+    with open("{}/information_model.txt".format(pathResults), mode="w") as informationFile:
         informationFile.write(stringInformation)
 
-    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(prefixResults + currentTime), separator=",")
+    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator=",")
     learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose=1)
+    #reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
 
     model.fit_generator(learningSetGenerator, epochs=numberEpochs, callbacks=[csvLogger, learningRateScheduler], validation_data=validationSetGenerator, max_queue_size=maxQueueSize, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=2)
 
     # To save the model
-    model.save("{}/model_trained.h5".format(prefixResults + currentTime))
+    modelFreezed = freeze_layers(model)
+    modelFreezed.save("{}/model_trained.h5".format(pathResults))
 
     return currentTime
 
@@ -184,7 +181,7 @@ class ParametersClass:
     This class stores the different parameters used to train the network.
     """
 
-    def __init__(self, sizeBatch, numberEpochs, initialLearningRate, numberEpochsLearningRate, discountFactor, widthImage, heightImage, maxQueueSize, brightnessShifts, pathImages, prefixResults, additionalInformation):
+    def __init__(self, sizeBatch, numberEpochs, initialLearningRate, numberEpochsLearningRate, discountFactor, widthImage, heightImage, maxQueueSize, pathImages, prefixResults, additionalInformation):
         """
         This is the initialization method.
 
@@ -209,7 +206,6 @@ class ParametersClass:
         self.widthImage = widthImage
         self.heightImage = heightImage
         self.maxQueueSize = maxQueueSize
-        self.brightnessShifts = brightnessShifts
         self.pathImages = pathImages
         self.prefixResults = prefixResults
         self.additionalInformation = additionalInformation
@@ -219,27 +215,13 @@ class ParametersClass:
         This method returns a string representing the object.
         """
 
-        stringInformation = "SIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nPROBABILITY_CROP_LEARNING_SET: {}\nREDUCTION_OPERATION_TEST_SET: {}\nMAX_QUEUE_SIZE: {}\nBRIGHTNESS_SHIFTS: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(
-            self.sizeBatch, self.numberEpochs, self.initialLearningRate, self.numberEpochsLearningRate, self.discountFactor, self.widthImage, self.heightImage, self.probabilityHorizontalFlip, self.probabilityVerticalFlip, self.probabilityCropLearningSet, self.reductionOperationTestSet, self.maxQueueSize, self.brightnessShifts, self.pathLists, self.pathImages, self.prefixResults, self.additionalInformation)
+        stringInformation = "SIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nPROBABILITY_HORIZONTAL_FLIP: {}\nPROBABILITY_VERTICAL_FLIP: {}\nPROBABILITY_CROP_LEARNING_SET: {}\nREDUCTION_OPERATION_TEST_SET: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(
+            self.sizeBatch, self.numberEpochs, self.initialLearningRate, self.numberEpochsLearningRate, self.discountFactor, self.widthImage, self.heightImage, self.probabilityHorizontalFlip, self.probabilityVerticalFlip, self.probabilityCropLearningSet, self.reductionOperationTestSet, self.maxQueueSize, self.pathLists, self.pathImages, self.prefixResults, self.additionalInformation)
 
         return stringInformation
 
 
-def get_arguments():
-    # Get the arguments of the program
-    parser = ArgumentParser(prog="Papy-S-Net architecture")
-
-    parser.add_argument('--size', dest='size', default=128, type=int, help="Image size (square; only one value needed)")
-    parser.add_argument('--batch_size', dest='batch_size', default=16, type=int, help="Batch size")
-    parser.add_argument('--brightness', dest='brightness', default=0, type=int, help="Brightness shifts during training (0 = no)")
-
-    return parser.parse_args()
-
-
 if __name__ == "__main__":
-    
-    args = get_arguments()
-
     """
     PAIRS: The number of pairs of each type (positive/negative) to sample for each papyrus; duplicates will be discarded.
     SIZE_BATCH: The size of the batch.
@@ -256,47 +238,56 @@ if __name__ == "__main__":
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
     PAIRS = 4000
-    SIZE_BATCH = args.batch_size
+    SIZE_BATCH = 16
     NUMBER_EPOCHS = 40
     INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 0.1
-    WIDTH_IMAGE = args.size
-    HEIGHT_IMAGE = args.size
+    WIDTH_IMAGE = 224
+    HEIGHT_IMAGE = 224
     PROBABILITY_HORIZONTAL_FLIP = 0.5
     PROBABILITY_VERTICAL_FLIP = 0.5
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
-    BRIGHTNESS_SHIFTS = args.brightness
+
     PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
     #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
     PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset.csv"
-    PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Papy-S-Net/Crop/"
-    ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Papy-S-Net (Pirrone '2019) trained from scratch. The similarity measure is the absolute difference and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
+    PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Xception/Random/"
+    ADDITIONAL_INFORMATION = "Xception with no weight initialization. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
 
-    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nMAX_QUEUE_SIZE: {}\nBRIGHTNESS_SHIFTS: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(
-        PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, MAX_QUEUE_SIZE, BRIGHTNESS_SHIFTS, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
+    stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(
+        PAIRS, SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
 
     # Generate the training and test pairs
-    X_train, y_train, X_test, y_test = PairGenerator.create_pairs(PAIRS, PATH_CSV)
+    X_train, y_train, X_test, y_test = PairGenerator.create_pairs(
+        PAIRS, PATH_CSV)
 
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
-    model = create_neural_network(WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
+    """
+    j = 0
+    for i in zip(X_test, y_test):
+        if j < 100:
+            print(i)
+            j += 1
 
-    if BRIGHTNESS_SHIFTS == 0:
-        learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
-    else:
-        learningSequence = fsb.FragmentSequenceBright(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
+    """
 
-    validationSequence = fsv.FragmentSequenceValidation(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
+    model = create_neural_network(
+        WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
+
+    learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE,
+                                           HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
+    validationSequence = fsv.FragmentSequenceValidation(
+        X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
 
     currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, SIZE_BATCH, INITIAL_LEARNING_RATE,
                                 MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)
 
     parametersClass = ParametersClass(SIZE_BATCH, NUMBER_EPOCHS, INITIAL_LEARNING_RATE, NUMBER_EPOCHS_LEARNING_RATE,
-                                      DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, MAX_QUEUE_SIZE, BRIGHTNESS_SHIFTS, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
+                                      DISCOUNT_FACTOR, WIDTH_IMAGE, HEIGHT_IMAGE, MAX_QUEUE_SIZE, PATH_IMAGES, PREFIX_RESULTS, ADDITIONAL_INFORMATION)
 
     # Evaluate the model on test set and compute global metrics
     y_pred = model.predict_generator(validationSequence, max_queue_size=MAX_QUEUE_SIZE,
@@ -311,7 +302,7 @@ if __name__ == "__main__":
     # Run evaluation pipeline
     print("Running evaluation pipeline...")
     pathResults = PREFIX_RESULTS + currentTime + "/"
-    EvaluationPipeline.run_pipeline(model, PATH_CSV, args, pathResults)
+    EvaluationPipeline.run_pipeline(model, PATH_CSV, pathResults)
 
     with open("{}/information_model_binary.pkl".format(pathResults), "wb") as f:
         pickle.dump(parametersClass, f)

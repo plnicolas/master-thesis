@@ -18,6 +18,11 @@ from scipy import interp
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 
+import sys
+from skimage import io
+from skimage import exposure
+import cv2
+
 import keras
 
 import datetime
@@ -141,7 +146,7 @@ def get_distance_matrix(y_pred, N, pairs, labels):
     for i in y_pred:
         # The distance is one minus the probability assigned to class 0 (= similar)
         # The higher the probability of the fragments being similar, the lower the distance between them
-        distance = 1 - i[0]
+        distance = i
         distanceVector.append(distance)
 
     # Convert the distance vector to a distance matrix
@@ -163,7 +168,7 @@ def run_TSNE(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot TSNE
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("TSNE")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -180,7 +185,7 @@ def run_MDS(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot MDS
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("MDS")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -214,7 +219,7 @@ def plot_curves(y_pred, y_true, N, pathResults):
     # Only keep the predicted probability for class 0 (=similar)
     # /!\ This means y_pred has values in [0;1] and the positive class is no longer 0,
     # but 1 !
-    y_pred = y_pred[:, 0]
+    #y_pred = y_pred[:, 0]
 
     # Convert the prediction vector to a prediction matrix
     # 1 line = predictions for 1 fragment vs others
@@ -249,7 +254,6 @@ def plot_curves(y_pred, y_true, N, pathResults):
         AUC = auc(fpr, tpr)
         
         # Interpolate TPRs (correct way to build mean ROC curve)
-        print(np.all(np.diff(fpr) >= 0))
         tpr = interp(base_fpr, fpr, tpr)
         tpr[0] = 0.0
 
@@ -357,7 +361,102 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     plt.savefig("{}dendrogram.png".format(pathResults))
     plt.clf()
 
-def run_pipeline(model, pathCSV, pathResults):
+"""
+# Function to calculate Chi-distace 
+def chi2_distance(A, B): 
+  
+    # compute the chi-squared distance using above formula 
+    chi = 0.5 * np.sum([((a - b) ** 2) / (a + b)  
+                      for (a, b) in zip(A, B)]) 
+  
+    return chi 
+
+def colour_histogram_dist(imagePairs):
+
+    y_pred = []
+    j = 0
+    # For each pair
+    for i in imagePairs:
+        image1Path = i[0]
+        image2Path = i[1]
+        # Load image and convert it to RGB (OpenCV stores images in BGR format)
+        image1 = io.imread(image1Path)
+        image2 = io.imread(image2Path)
+        if j < 1:
+            histr1, bins = np.histogram(image1[:,:,0], bins=np.arange(256))
+            histg1, bins = np.histogram(image1[:,:,1], bins=np.arange(256))
+            histb1, bins = np.histogram(image1[:,:,2], bins=np.arange(256))
+            plt.subplot(2,1,1)
+            plt.plot(histr1, color="red")
+            plt.plot(histg1, color="green")
+            plt.plot(histb1, color="blue")
+
+            histr2, bins = exposure.histogram(image2[:,:,0], nbins=2)
+            histg2, bins = exposure.histogram(image2[:,:,1], nbins=2)
+            histb2, bins = exposure.histogram(image2[:,:,2], nbins=2)
+            plt.subplot(2,1,2)
+            #plt.plot(histr2, color="red")
+            #plt.plot(histg2, color="green")
+            #plt.plot(histb2, color="blue")
+
+            #plt.show()
+
+            print(histr1)
+            print(histr2)
+            print(chi2_distance(histr1, histr2))
+
+            img = cv2.imread(image1Path, -1)
+            color = ('b','g','r')
+            for channel,col in enumerate(color):
+                histr = cv2.calcHist([img],[channel],None,[256],[0,256])
+                plt.plot(histr,color = col)
+                plt.xlim([0,256])
+            plt.title('Histogram for color scale picture')
+            plt.show()
+
+
+        H1 = cv2.calcHist([image1], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        H1 = cv2.normalize(H1, H1).flatten()
+
+        H2 = cv2.calcHist([image2], [0, 1, 2], None, [8, 8, 8], [0, 256, 0, 256, 0, 256])
+        H2 = cv2.normalize(H2, H2).flatten()
+
+        # Compare the histogrames using the Chi-Squared distance
+        y_pred.append(cv2.compareHist(H1, H2, cv2.HISTCMP_CHISQR))
+
+    print(y_pred[:20])
+
+    return y_pred
+"""
+
+def colour_histogram_dist(imagePairs):
+
+    y_pred = []
+    j = 0
+    # For each pair
+    for i in imagePairs:
+        image1Path = i[0]
+        image2Path = i[1]
+        # Load image and convert it to RGB (OpenCV stores images in BGR format)
+        image1 = cv2.imread(image1Path)
+        image2 = cv2.imread(image2Path)
+        image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+        image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
+
+        H1 = cv2.calcHist([image1], [0, 1, 2], None, [2, 2, 2], [0, 256, 0, 256, 0, 256])
+        H1 = cv2.normalize(H1, H1).flatten()
+
+        H2 = cv2.calcHist([image2], [0, 1, 2], None, [2, 2, 2], [0, 256, 0, 256, 0, 256])
+        H2 = cv2.normalize(H2, H2).flatten()
+
+        # Compare the histogrames using the Chi-Squared distance
+        y_pred.append(cv2.compareHist(H1, H2, cv2.HISTCMP_CHISQR))
+
+    print(y_pred[:20])
+
+    return y_pred
+
+def run_pipeline(pathCSV, pathResults):
     """
     Run the complete evaluation pipeline.
 
@@ -384,13 +483,7 @@ def run_pipeline(model, pathCSV, pathResults):
     testData = data[data.iloc[:,1].isin(testIDList)]
 
     # Replace papyrus IDs with "Papyrus 1", "Papyrus 2" etc
-    stringList = []
-    i = 1
-    while i <= len(testIDList):
-        tmp = "Papyrus {}".format(i)
-        stringList.append(tmp)
-        i += 1
-
+    stringList = ["Papyrus 1", "Papyrus 2", "Papyrus 3", "Papyrus 4", "Papyrus 5", "Papyrus 6"]
     testData = testData.replace(testIDList, stringList)
 
     #Generate all possible pairs of test fragments
@@ -399,25 +492,23 @@ def run_pipeline(model, pathCSV, pathResults):
     numberOfFragments = testData.values.shape[0]
 
     # Create keras Sequence using the test data
-    testSequence = fsv.FragmentSequenceValidation(pairs, labels, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
+    # testSequence = fsv.FragmentSequenceValidation(pairs, labels, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
 
-    # Get prediction of the model for each fragment pair
-    y_pred = model.predict_generator(testSequence, max_queue_size=MAX_QUEUE_SIZE, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=1)
-
-    # Print the global classification report
-    #print_classification_report(y_pred, labels)
-
+    # Get prediction of the colour-histogram baseline for each fragment pair
+    y_pred = colour_histogram_dist(pairs)
 
     # Get the distance matrix from the predictions
     distanceMatrix = get_distance_matrix(y_pred, numberOfFragments, pairs, labels)
     distanceMatrix = check_symmetric(distanceMatrix)
 
-    #a = np.random.rand(numberOfFragments, numberOfFragments)
-    #distanceMatrix = np.tril(a) + np.tril(a, -1).T
-
     # Run TSNE and MDS and plot results
     run_TSNE(testData, distanceMatrix, pathResults)
     run_MDS(testData, distanceMatrix, pathResults)
+
+    # y_pred must have values in [0,1] to pass to plot_curves
+    y_pred = np.array(y_pred)
+    y_pred = y_pred / np.max(y_pred)
+    y_pred = 1 - y_pred
     plot_curves(y_pred, labels, numberOfFragments, pathResults)
 
     # setting distance_threshold=0 ensures we compute the full tree.
@@ -427,3 +518,11 @@ def run_pipeline(model, pathCSV, pathResults):
     plt.title('Hierarchical Clustering Dendrogram')
     # plot the top three levels of the dendrogram
     plot_dendrogram(modelClustering, testData, pathResults, truncate_mode=None, labels=testData.iloc[:,1].values)
+
+
+if __name__ == '__main__':
+
+    PATH_CSV = "dataset.csv"
+    PREFIX_RESULTS = "Results/"
+
+    run_pipeline(PATH_CSV, PREFIX_RESULTS)

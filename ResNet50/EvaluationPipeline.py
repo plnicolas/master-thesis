@@ -13,11 +13,13 @@ from sklearn.metrics import auc
 from sklearn.manifold import TSNE
 from sklearn.manifold import MDS
 
+from scipy import interp
+
+from scipy.cluster.hierarchy import dendrogram
+from sklearn.cluster import AgglomerativeClustering
+
 import keras
-from keras import backend as K
-import keras.utils
-import keras.models
-import keras.metrics
+
 import datetime
 import multiprocessing
 
@@ -36,18 +38,12 @@ import FragmentSequenceValidation as fsv
 
 PAIRS = 4000
 SIZE_BATCH = 16
-NUMBER_EPOCHS = 40
-INITIAL_LEARNING_RATE = 0.01
-NUMBER_EPOCHS_LEARNING_RATE = 20
-DISCOUNT_FACTOR = 0.1
 WIDTH_IMAGE = 224
 HEIGHT_IMAGE = 224
-PROBABILITY_HORIZONTAL_FLIP = 0.5
-PROBABILITY_VERTICAL_FLIP = 0.5
 MAX_QUEUE_SIZE = 50
 
-#PATH_IMAGES = ""
-PATH_IMAGES = "/scratch/plnicolas/datasets/"
+PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+#PATH_IMAGES = "/scratch/plnicolas/datasets/"
 
 ###############################################
 # EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
@@ -161,7 +157,7 @@ def run_TSNE(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot TSNE
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
     plt.title("TSNE")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -178,34 +174,12 @@ def run_MDS(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot MDS
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
     plt.title("MDS")
     plt.tight_layout()
     fig = graph.get_figure()
     fig.savefig('{}MDS.png'.format(pathResults))
     plt.clf()
-
-def print_classification_report(y_pred, y_true):
-    """
-    Print the classification report given some predictions.
-
-    Parameters:
-    ----------
-        - y_pred: The predictions of some model.
-        - y_true: The true labels.
-
-    Returns:
-    --------
-        - /
-
-    """
-
-    # Argmax because we want the class (= index), not the probability of the input belonging to the class
-    #(for ROC curve or Precision-Recall curve, take the value at index ???? instead of the argmax)
-    y_pred_bool = np.argmax(y_pred, axis=1)
-
-    print(classification_report(y_true, y_pred_bool))
-
 
 def plot_curves(y_pred, y_true, N, pathResults):
 
@@ -230,6 +204,8 @@ def plot_curves(y_pred, y_true, N, pathResults):
     fprList = []
     tprList = []
     aucList = []
+    base_fpr = np.linspace(0, 1, 101)
+    base_rec = np.linspace(0, 1, 101)
 
     # For each fragment
     for fragment in range(N):
@@ -244,47 +220,114 @@ def plot_curves(y_pred, y_true, N, pathResults):
         fpr, tpr, thresholds = roc_curve(trueLabels, predLabels, pos_label=0)
         AUC = auc(fpr, tpr)
         
+        # Interpolate TPRs (correct way to build mean ROC curve)
+        print(np.all(np.diff(fpr) >= 0))
+        tpr = interp(base_fpr, fpr, tpr)
+        tpr[0] = 0.0
+
+        # Interpolate precisions
+        # First sort recalls in ascending order (necessary for interpolation) while retaining order of pairings with precisions
+        recalls, precisions = zip(*sorted(zip(recalls, precisions)))
+        precisions = interp(base_rec, recalls, precisions)
+        precisions[0] = 1.0
 
         # Store into a list
         precisionsList.append(precisions)
-        recallsList.append(recalls)
         auprList.append(aupr)
-        fprList.append(fpr)
         tprList.append(tpr)
         aucList.append(AUC)
 
-    # Create DataFrame to easily compute mean vectors
-    precisionDF = pandas.DataFrame(precisionsList)
-    recallsDF = pandas.DataFrame(recallsList)
-    fprDF = pandas.DataFrame(fprList)
-    tprDF = pandas.DataFrame(tprList)
+    # ROC
+    tprs = np.array(tprList)
+    mean_tprs = tprs.mean(axis=0)
+    std = tprs.std(axis=0)
 
-    # Compute means
-    meanPrecisions = precisionDF.mean().values
-    meanRecalls = recallsDF.mean().values
-    meanfpr = fprDF.mean().values
-    meantpr = tprDF.mean().values
+    mean_auc = auc(base_fpr, mean_tprs)
+    std_auc = np.std(aucList)
 
+    tprs_upper = np.minimum(mean_tprs + std, 1)
+    tprs_lower = mean_tprs - std
 
-    plt.plot(meanRecalls, meanPrecisions, color='darkorange', label='PR curve (mean MAP = %0.2f)' % np.mean(auprList))
-    plt.title("Precision-Recall curve")
-    plt.xlabel("Recall")
-    plt.ylabel("Precision")
-    plt.legend(loc="best")
-    plt.tight_layout()
-    plt.savefig("{}meanPR.png".format(pathResults))
-    plt.clf()
-
-    plt.plot(meanfpr, meantpr, color='darkorange', label='ROC curve (mean AUC = %0.2f)' % np.mean(aucList))
-    plt.plot([0, 1], [0, 1], color='navy', linestyle='--')
-    plt.title("ROC curve")
-    plt.xlabel("False Positive Rate")
-    plt.ylabel("True Positive Rate")
+    plt.plot(base_fpr, mean_tprs, 'b', alpha = 0.8, label=r'Mean ROC (AUC = %0.2f $\pm$ %0.2f)' % (mean_auc, std_auc),)
+    plt.fill_between(base_fpr, tprs_lower, tprs_upper, color = 'blue', alpha = 0.2)
+    plt.plot([0, 1], [0, 1], linestyle = '--', lw = 2, color = 'r', label = 'Luck', alpha= 0.8)
+    plt.xlim([-0.01, 1.01])
+    plt.ylim([-0.01, 1.01])
+    plt.ylabel('True Positive Rate')
+    plt.xlabel('False Positive Rate')
     plt.legend(loc="lower right")
+    plt.title('Receiver operating characteristic (ROC) curve')
     plt.tight_layout()
     plt.savefig("{}meanROC.png".format(pathResults))
     plt.clf()
 
+    # Precision-Recall
+
+    precs = np.array(precisionsList)
+    mean_precs = precs.mean(axis=0)
+    std = precs.std(axis=0)
+
+    mean_map = auc(base_rec, mean_precs)
+    std_map = np.std(auprList)
+
+    precs_upper = np.minimum(mean_precs + std, 1)
+    precs_lower = mean_precs - std
+
+    plt.plot(base_rec, mean_precs, 'b', alpha = 0.8, label=r'Mean PR (MAP = %0.2f $\pm$ %0.2f)' % (mean_map, std_map),)
+    plt.fill_between(base_rec, precs_lower, precs_upper, color = 'blue', alpha = 0.2)
+    plt.xlim([-0.01, 1.01])
+    plt.ylim([-0.01, 1.01])
+    plt.ylabel('Precision')
+    plt.xlabel('Recall')
+    plt.legend(loc="best")
+    plt.title('Precision-Recall curve')
+    plt.tight_layout()
+    plt.savefig("{}meanPR.png".format(pathResults))
+    plt.clf()
+
+
+def plot_dendrogram(model, data, pathResults, **kwargs):
+    # Create linkage matrix and then plot the dendrogram
+
+    # create the counts of samples under each node
+    counts = np.zeros(model.children_.shape[0])
+    n_samples = len(model.labels_)
+    for i, merge in enumerate(model.children_):
+        current_count = 0
+        for child_idx in merge:
+            if child_idx < n_samples:
+                current_count += 1  # leaf node
+            else:
+                current_count += counts[child_idx - n_samples]
+        counts[i] = current_count
+
+    linkage_matrix = np.column_stack([model.children_, model.distances_,
+                                      counts]).astype(float)
+
+    # Plot the corresponding dendrogram
+    d = dendrogram(linkage_matrix, **kwargs)
+    
+    # Create a color palette with 6 color for the 6 test papyri
+    my_palette = plt.cm.get_cmap("Dark2", 6)
+
+    # transforme the Papyrus column in a categorical variable. It will allow to put one color on each level.
+    labels = np.array(d.get("ivl"))
+
+    from sklearn.preprocessing import LabelEncoder  
+    le = LabelEncoder()
+    my_color = le.fit_transform(labels)
+
+    ax = plt.gca()
+    xlbls = ax.get_xmajorticklabels()
+    num=-1
+    for lbl in xlbls:
+        num += 1
+        val = my_color[num]
+        lbl.set_color(my_palette(val))
+    plt.xlabel("Fragment")
+    plt.tight_layout()
+    plt.savefig("{}dendrogram.png".format(pathResults))
+    plt.clf()
 
 
 def run_pipeline(model, pathCSV, pathResults):
@@ -314,30 +357,39 @@ def run_pipeline(model, pathCSV, pathResults):
     testData = data[data.iloc[:,1].isin(testIDList)]
 
     # Replace papyrus IDs with "Papyrus 1", "Papyrus 2" etc
-    stringList = ["Papyrus 1", "Papyrus 2", "Papyrus 3", "Papyrus 4", "Papyrus 5", "Papyrus 6"]
+    stringList = []
+    i = 1
+    while i <= len(testIDList):
+        tmp = "Papyrus {}".format(i)
+        stringList.append(tmp)
+        i += 1
+
     testData = testData.replace(testIDList, stringList)
 
     #Generate all possible pairs of test fragments
     pairs, labels = __test_pairs__(testData)
 
-    #Get distance matrix of the test fragments
     numberOfFragments = testData.values.shape[0]
-    
+
     # Create keras Sequence using the test data
     testSequence = fsv.FragmentSequenceValidation(pairs, labels, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
 
     # Get prediction of the model for each fragment pair
-    y_pred = model.predict_generator(testSequence, max_queue_size=MAX_QUEUE_SIZE, workers=multiprocessing.cpu_count(), use_multiprocessing=True)
-
-    # Print the global classification report
-    print_classification_report(y_pred, labels)
+    y_pred = model.predict_generator(testSequence, max_queue_size=MAX_QUEUE_SIZE, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=1)
 
     # Get the distance matrix from the predictions
     distanceMatrix = get_distance_matrix(y_pred, numberOfFragments, pairs, labels)
-    # Enforces symmetry (necessary because of floating-point rounding errors)
     distanceMatrix = check_symmetric(distanceMatrix)
 
     # Run TSNE and MDS and plot results
     run_TSNE(testData, distanceMatrix, pathResults)
     run_MDS(testData, distanceMatrix, pathResults)
     plot_curves(y_pred, labels, numberOfFragments, pathResults)
+
+    # setting distance_threshold=0 ensures we compute the full tree.
+    modelClustering = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
+
+    modelClustering = modelClustering.fit(distanceMatrix)
+    plt.title('Hierarchical Clustering Dendrogram')
+    # plot the top three levels of the dendrogram
+    plot_dendrogram(modelClustering, testData, pathResults, truncate_mode=None, labels=testData.iloc[:,1].values)

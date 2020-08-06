@@ -8,7 +8,6 @@ import keras.utils
 import keras.models
 import keras.layers
 import keras.callbacks
-import keras.applications.nasnet
 import keras.metrics
 import keras.preprocessing.image
 import keras.optimizers
@@ -22,12 +21,13 @@ import os
 import random
 import pickle
 
+from argparse import ArgumentParser
+
 import EvaluationPipeline
 import PairGenerator
 
 import FragmentSequence as fs
 import FragmentSequenceValidation as fsv
-
 
 def create_neural_network(widthImage, heightImage, initialLearningRate):
     """
@@ -76,16 +76,14 @@ def create_neural_network(widthImage, heightImage, initialLearningRate):
 
     # Two fully connected layers
     fullyConnected1 = keras.layers.Dense(512, activation='relu')(distance)
-    fullyConnected2 = keras.layers.Dense(
-        512, activation='relu')(fullyConnected1)
+    fullyConnected2 = keras.layers.Dense(512, activation='relu')(fullyConnected1)
 
     # Binary classification: same papyrus or not
     lastLayer = keras.layers.Dense(2, activation='softmax')(fullyConnected2)
 
-    finalModel = keras.models.Model(inputs=[a, b], outputs=lastLayer)
+    finalModel = keras.models.Model(inputs=[a,b], outputs=lastLayer)
 
-    finalModel.compile(optimizer=keras.optimizers.Adam(lr=initialLearningRate),
-                       loss=keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
+    finalModel.compile(optimizer=keras.optimizers.Adam(lr=initialLearningRate), loss=keras.losses.sparse_categorical_crossentropy, metrics=['accuracy'])
 
     finalModel.summary()
 
@@ -119,17 +117,12 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     with open("{}/information_model.txt".format(prefixResults + currentTime), mode="w") as informationFile:
         informationFile.write(stringInformation)
 
-    tensorboardLogger = keras.callbacks.TensorBoard(log_dir="{}/tensorboard_log".format(
-        prefixResults + currentTime), histogram_freq=0, batch_size=batchSize, write_grads=False, write_images=True, update_freq="epoch")
+    csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(prefixResults + currentTime), separator=",")
+    learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose=1)
 
-    csvLogger = keras.callbacks.CSVLogger(
-        "{}/csv_log.csv".format(prefixResults + currentTime), separator=",")
-    learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(
-        initialLearningRate, numberEpochsLearningRate, discountFactor), verbose=1)
+    model.fit_generator(learningSetGenerator, epochs=numberEpochs, callbacks=[csvLogger, learningRateScheduler], validation_data=validationSetGenerator, max_queue_size=maxQueueSize, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=2)
 
-    model.fit_generator(learningSetGenerator, epochs=numberEpochs, callbacks=[tensorboardLogger, csvLogger, learningRateScheduler],
-                        validation_data=validationSetGenerator, max_queue_size=maxQueueSize, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=2)
-
+    # To save the model
     model.save("{}/model_trained.h5".format(prefixResults + currentTime))
 
     return currentTime
@@ -187,15 +180,14 @@ class ArgumentException(Exception):
 
 class ParametersClass:
     """
-    This class stores different parameters used in the code.
+    This class stores the different parameters used to train the network.
     """
 
     def __init__(self, sizeBatch, numberEpochs, initialLearningRate, numberEpochsLearningRate, discountFactor, widthImage, heightImage, maxQueueSize, pathImages, prefixResults, additionalInformation):
         """
         This is the initialization method.
 
-        typeIdentification: The type of identification ("artist", "genre", or "style").
-        sizeBatch: The size of the batch.
+        sizeBatch: The batch size.
         numberEpochs: The number of epochs to train.
         initialLearningRate: The initial learning rate.
         numberEpochsLearningRate: The number of epochs between two changes of the learning rate.
@@ -231,7 +223,21 @@ class ParametersClass:
         return stringInformation
 
 
+def get_arguments():
+    # Get the arguments of the program
+    parser = ArgumentParser(prog="Papy-S-Net architecture")
+
+    parser.add_argument('--size', dest='size', default=128, type=int, help="Image size (square; only one value needed)")
+    parser.add_argument('--batch_size', dest='batch_size', default=16, type=int, help="Batch size")
+    parser.add_argument('--brightness', dest='brightness', default=0, type=int, help="Brightness shifts during training (0 = no)")
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+
+    args = get_arguments()
+    
     """
     PAIRS: The number of pairs of each type (positive/negative) to sample for each papyrus; duplicates will be discarded.
     SIZE_BATCH: The size of the batch.
@@ -248,23 +254,21 @@ if __name__ == "__main__":
     ADDITIONAL_INFORMATION: The additional information to write to the model description file.
     """
     PAIRS = 4000
-    SIZE_BATCH = 16
+    SIZE_BATCH = args.batch_size
     NUMBER_EPOCHS = 40
     INITIAL_LEARNING_RATE = 0.0001
     NUMBER_EPOCHS_LEARNING_RATE = 20
     DISCOUNT_FACTOR = 1
-    WIDTH_IMAGE = 128
-    HEIGHT_IMAGE = 128
+    WIDTH_IMAGE = args.size
+    HEIGHT_IMAGE = args.size
     PROBABILITY_HORIZONTAL_FLIP = 0.5
     PROBABILITY_VERTICAL_FLIP = 0.5
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
-    #PATH_IMAGES = ""
-    PATH_IMAGES = "/scratch/plnicolas/datasets/"
-    #PATH_CSV = "dataset.csv"
-    PATH_CSV = "/home/plnicolas/codes/dataset_alpha.csv"
-    #PREFIX_RESULTS = "Results/"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Papy-S-Net/Alpha/"
+    PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+    #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+    PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset_alpha.csv"
+    PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Papy-S-Net/Alpha/"
     ADDITIONAL_INFORMATION = "This model implements a siamese neural network using Papy-S-Net (Pirrone '2019) trained from scratch. The similarity measure is the absolute difference and the last layer is a dense layer with a softmax activation function. All weights are directly trainable. The loss function is the categorical cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
 
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(
@@ -279,10 +283,8 @@ if __name__ == "__main__":
     model = create_neural_network(
         WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
 
-    learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE,
-                                           HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
-    validationSequence = fsv.FragmentSequenceValidation(
-        X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
+    learningSequence = fs.FragmentSequence(X_train, y_train, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES, PROBABILITY_HORIZONTAL_FLIP, PROBABILITY_VERTICAL_FLIP)
+    validationSequence = fsv.FragmentSequenceValidation(X_test, y_test, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
 
     currentTime = train_network(model, learningSequence, validationSequence, NUMBER_EPOCHS, SIZE_BATCH, INITIAL_LEARNING_RATE,
                                 MAX_QUEUE_SIZE, NUMBER_EPOCHS_LEARNING_RATE, DISCOUNT_FACTOR, PREFIX_RESULTS, stringInformation)
@@ -293,8 +295,7 @@ if __name__ == "__main__":
     # Evaluate the model on test set and compute global metrics
     y_pred = model.predict_generator(validationSequence, max_queue_size=MAX_QUEUE_SIZE,
                                      workers=multiprocessing.cpu_count(), use_multiprocessing=True)
-    # Argmax because we want the class (= index), not the probability of the input belonging to the class
-    #(for ROC curve or Precision-Recall curve, take the value at index ???? instead of the argmax)
+
     y_pred_bool = numpy.argmax(y_pred, axis=1)
 
     print("Global classification report:")
@@ -304,7 +305,7 @@ if __name__ == "__main__":
     # Run evaluation pipeline
     print("Running evaluation pipeline...")
     pathResults = PREFIX_RESULTS + currentTime + "/"
-    EvaluationPipeline.run_pipeline(model, PATH_CSV, pathResults)
+    EvaluationPipeline.run_pipeline(model, PATH_CSV, args, pathResults)
 
     with open("{}/information_model_binary.pkl".format(pathResults), "wb") as f:
         pickle.dump(parametersClass, f)

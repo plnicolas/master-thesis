@@ -115,7 +115,6 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
 
     csvLogger = keras.callbacks.CSVLogger("{}/csv_log.csv".format(pathResults), separator=",")
     learningRateScheduler = keras.callbacks.LearningRateScheduler(schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor), verbose=1)
-    #reduceLR = keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, min_lr=0.00001)
 
     model.fit_generator(learningSetGenerator, epochs=numberEpochs, callbacks=[csvLogger, learningRateScheduler], validation_data=validationSetGenerator, max_queue_size=maxQueueSize, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=2)
 
@@ -126,36 +125,36 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     return currentTime
 
 
-def schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor):
+def schedule_learning_rate_decorator(initialLR, numberEpochsLR, discountFactor):
     """
     This function returns the learning rate scheduler.
-
+    
     Parameters:
     -----------
-    - initialLearningRate: The initial learning rate.
-    - numberEpochsLearningRate: The number of epochs between two changes of the learning rate.
+    - initialLR: The initial learning rate.
+    - numberEpochsLR: The number of epochs between two changes of the learning rate.
     - discountFactor: The discount factor.
-
+    
     Returns:
     --------
     - The learning rate scheduler.
     """
-
+    
     def schedule_learning_rate(epochIndex):
         """
         This function defines the learning rate scheduler.
-
+        
         Parameters:
         ----------
         - epochIndex: The index of the epoch that is going to start.
-
+        
         Returns:
         --------
         - The new learning rate.
         """
-
-        return initialLearningRate * (discountFactor ** (epochIndex // numberEpochsLearningRate))
-
+        
+        return initialLR * (discountFactor ** (epochIndex // numberEpochsLR))
+        
     return schedule_learning_rate
 
 
@@ -253,7 +252,9 @@ if __name__ == "__main__":
     PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
     #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
     PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset.csv"
+    #PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Xception/Random/"
+    #PREFIX_RESULTS = "/home/plnicolas/codes/Results/Xception/Random/"
     ADDITIONAL_INFORMATION = "Xception with no weight initialization. All weights are directly trainable. The loss function is the binary cross-entropy. The optimizer is Adam with the default beta1 and beta2 parameters."
 
     stringInformation = "PAIRS: {}\nSIZE_BATCH: {}\nNUMBER_EPOCHS: {}\nINITIAL_LEARNING_RATE: {}\nNUMBER_EPOCHS_LEARNING_RATE: {}\nDISCOUNT_FACTOR: {}\nWIDTH_IMAGE: {}\nHEIGHT_IMAGE: {}\nMAX_QUEUE_SIZE: {}\nPATH_IMAGES: {}\nPREFIX_RESULTS: {}\n\nADDITIONAL_INFORMATION:\n{}".format(

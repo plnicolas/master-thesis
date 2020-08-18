@@ -34,6 +34,10 @@ import PairGenerator
 import FragmentSequence as fs
 import FragmentSequenceValidation as fsv
 
+#PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+MAX_QUEUE_SIZE = 50
+
 def __test_IDs_list__(data):
     """
     Returns a list containing the IDs of the test papyri.
@@ -58,7 +62,9 @@ def __test_IDs_list__(data):
     # The remaining papyri wered used to generate the testing pairs
     IDRange = (int)(N - (N / 4))
     
-    testIDs = IDList[IDRange:]
+    # To have readable figures for the report, only 10 test papyri
+    # The last 10 papyri, which have not been seen during training
+    testIDs = IDList[-10:]
 
     return testIDs
 
@@ -141,7 +147,8 @@ def run_TSNE(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot TSNE
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    #graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
     plt.title("TSNE")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -158,7 +165,8 @@ def run_MDS(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot MDS
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    #graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
     plt.title("MDS")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -227,7 +235,6 @@ def plot_curves(y_pred, y_true, N, pathResults):
         AUC = auc(fpr, tpr)
         
         # Interpolate TPRs (correct way to build mean ROC curve)
-        print(np.all(np.diff(fpr) >= 0))
         tpr = interp(base_fpr, fpr, tpr)
         tpr[0] = 0.0
 
@@ -313,8 +320,8 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     # Plot the corresponding dendrogram
     d = dendrogram(linkage_matrix, **kwargs)
     
-    # Create a color palette with 6 color for the 6 test papyri
-    my_palette = plt.cm.get_cmap("Dark2", 6)
+    # Create a color palette with 10 colors for the 10 test papyri
+    my_palette = plt.cm.get_cmap("tab10", 10)
 
     # transforme the Papyrus column in a categorical variable. It will allow to put one color on each level.
     labels = np.array(d.get("ivl"))
@@ -370,7 +377,7 @@ def sample_predictions_ranked(distanceMatrix, data, numberOfFragments, N, k):
 
         # Get index of k closest fragments (= smallest values)
         kBestIndices = np.argpartition(line, k)[k:]
-
+        print(len(kBestIndices))
         # Retrieve images and display
         imgTarget = io.imread(PATH_IMAGES + fragmentList[i])
         io.imsave("Fragment{}_0.png".format(i), imgTarget)
@@ -398,7 +405,6 @@ def run_pipeline(model, pathCSV, args, pathResults):
     """
     Run the complete evaluation pipeline.
 
-
     Parameters:
     ----------
         - model: The model to be evaluated, already trained.
@@ -414,9 +420,6 @@ def run_pipeline(model, pathCSV, args, pathResults):
     SIZE_BATCH = args.batch_size
     WIDTH_IMAGE = args.size
     HEIGHT_IMAGE = args.size
-
-    PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
-    #PATH_IMAGES = "/scratch/plnicolas/datasets/"
 
     # Load data from CSV file
     data = pandas.read_csv(pathCSV, sep=",", header=None)
@@ -437,7 +440,7 @@ def run_pipeline(model, pathCSV, args, pathResults):
 
     testData = testData.replace(testIDList, stringList)
 
-    #Generate all possible pairs of test fragments
+    # Generate all possible pairs of test fragments
     pairs, labels = __test_pairs__(testData)
 
     numberOfFragments = testData.values.shape[0]
@@ -452,17 +455,17 @@ def run_pipeline(model, pathCSV, args, pathResults):
     distanceMatrix = get_distance_matrix(y_pred, numberOfFragments, pairs, labels)
     distanceMatrix = check_symmetric(distanceMatrix)
 
-    sample_predictions_ranked(distanceMatrix, testData, numberOfFragments, 30, 5)
-
     # Run TSNE and MDS and plot results
     run_TSNE(testData, distanceMatrix, pathResults)
     run_MDS(testData, distanceMatrix, pathResults)
     plot_curves(y_pred, labels, numberOfFragments, pathResults)
 
-    # setting distance_threshold=0 ensures we compute the full tree.
+    # Setting distance_threshold=0 ensures we compute the full tree.
     modelClustering = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
 
     modelClustering = modelClustering.fit(distanceMatrix)
     plt.title('Hierarchical Clustering Dendrogram')
-    # plot the top three levels of the dendrogram
+    # Plot the top three levels of the dendrogram
     plot_dendrogram(modelClustering, testData, pathResults, truncate_mode=None, labels=testData.iloc[:,1].values)
+
+    sample_predictions_ranked(distanceMatrix, testData, numberOfFragments, 30, 5)

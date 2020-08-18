@@ -49,7 +49,7 @@ PROBABILITY_VERTICAL_FLIP = 0.5
 MAX_QUEUE_SIZE = 50
 
 #PATH_IMAGES = ""
-PATH_IMAGES = "/scratch/plnicolas/datasets/"
+PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
 
 ###############################################
 # EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
@@ -80,7 +80,10 @@ def __test_IDs_list__(data):
     # The remaining papyri wered used to generate the testing pairs
     IDRange = (int)(N - (N / 4))
     
-    testIDs = IDList[IDRange:]
+    # To have readable figures for the report, only 10 test papyri
+    # The last 10 papyri, which have not been seen during training
+    testIDs = IDList[-10:]
+    #testIDs = IDList[IDRange:]
 
     return testIDs
 
@@ -335,8 +338,8 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     # Plot the corresponding dendrogram
     d = dendrogram(linkage_matrix, **kwargs)
     
-    # Create a color palette with 6 color for the 6 test papyri
-    my_palette = plt.cm.get_cmap("Dark2", 6)
+    # Create a color palette with 10 color for the 10 test papyri
+    my_palette = plt.cm.get_cmap("tab10", 10)
 
     # transforme the Papyrus column in a categorical variable. It will allow to put one color on each level.
     labels = np.array(d.get("ivl"))

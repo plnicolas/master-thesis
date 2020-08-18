@@ -268,8 +268,8 @@ if __name__ == "__main__":
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
     BRIGHTNESS_SHIFTS = args.brightness
-    #PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
-    PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+    PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+    #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
     PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset.csv"
     #PATH_CSV = "/home/plnicolas/codes/dataset.csv"
     PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Papy-S-Net/Crop/"

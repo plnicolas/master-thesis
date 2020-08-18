@@ -30,7 +30,7 @@ from cytomine.models import AnnotationCollection
 PUBLIC_KEY = "d85b2768-5e54-45bf-8c00-76d2b512f1c5"
 PRIVATE_KEY = "547db0e2-af21-4963-baff-df2afde92408"
 HOST = "research.cytomine.be"
-DOWNLOAD_PATH = "Images/"
+DOWNLOAD_PATH = "Images2/"
 
 if __name__ == '__main__':
     parser = ArgumentParser(prog="Annotation retrieval script")

@@ -128,36 +128,36 @@ def train_network(model, learningSetGenerator, validationSetGenerator, numberEpo
     return currentTime
 
 
-def schedule_learning_rate_decorator(initialLearningRate, numberEpochsLearningRate, discountFactor):
+def schedule_learning_rate_decorator(initialLR, numberEpochsLR, discountFactor):
     """
     This function returns the learning rate scheduler.
-
+    
     Parameters:
     -----------
-    - initialLearningRate: The initial learning rate.
-    - numberEpochsLearningRate: The number of epochs between two changes of the learning rate.
+    - initialLR: The initial learning rate.
+    - numberEpochsLR: The number of epochs between two changes of the learning rate.
     - discountFactor: The discount factor.
-
+    
     Returns:
     --------
     - The learning rate scheduler.
     """
-
+    
     def schedule_learning_rate(epochIndex):
         """
         This function defines the learning rate scheduler.
-
+        
         Parameters:
         ----------
         - epochIndex: The index of the epoch that is going to start.
-
+        
         Returns:
         --------
         - The new learning rate.
         """
-
-        return initialLearningRate * (discountFactor ** (epochIndex // numberEpochsLearningRate))
-
+        
+        return initialLR * (discountFactor ** (epochIndex // numberEpochsLR))
+        
     return schedule_learning_rate
 
 
@@ -265,8 +265,8 @@ if __name__ == "__main__":
     PROBABILITY_VERTICAL_FLIP = 0.5
     NUMBER_WORKERS = multiprocessing.cpu_count()
     MAX_QUEUE_SIZE = 50
-    #PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
-    PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+    PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+    #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
     PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset_alpha.csv"
     #PATH_CSV = "/home/plnicolas/codes/dataset_alpha.csv"
     PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Papy-S-Net/Alpha/"

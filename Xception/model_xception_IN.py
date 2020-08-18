@@ -265,15 +265,6 @@ if __name__ == "__main__":
     print("Number of training pairs: {}".format(len(X_train)))
     print("Number of testing pairs: {}".format(len(X_test)))
 
-    """
-    j = 0
-    for i in zip(X_test, y_test):
-        if j < 100:
-            print(i)
-            j += 1
-
-    """
-
     model = create_neural_network(
         WIDTH_IMAGE, HEIGHT_IMAGE, INITIAL_LEARNING_RATE)
 

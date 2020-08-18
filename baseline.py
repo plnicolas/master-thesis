@@ -18,7 +18,10 @@ from scipy import interp
 from scipy.cluster.hierarchy import dendrogram
 from sklearn.cluster import AgglomerativeClustering
 
+import sys
 from skimage import io
+from skimage import exposure
+import cv2
 
 import keras
 
@@ -27,16 +30,16 @@ import multiprocessing
 
 import os
 import random
-import pickle
 
 import PairGenerator
 
-import FragmentSequence as fs
-import FragmentSequenceValidation as fsv
-
-PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+PATH_IMAGES = ""
 #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
-MAX_QUEUE_SIZE = 50
+
+###############################################
+# EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
+###############################################
+
 
 def __test_IDs_list__(data):
     """
@@ -62,8 +65,7 @@ def __test_IDs_list__(data):
     # The remaining papyri wered used to generate the testing pairs
     IDRange = (int)(N - (N / 4))
     
-    # To have readable figures for the report, only 10 test papyri
-    # The last 10 papyri, which have not been seen during training
+    #testIDs = IDList[IDRange:]
     testIDs = IDList[-10:]
 
     return testIDs
@@ -125,7 +127,7 @@ def get_distance_matrix(y_pred, N, pairs, labels):
     for i in y_pred:
         # The distance is one minus the probability assigned to class 0 (= similar)
         # The higher the probability of the fragments being similar, the lower the distance between them
-        distance = 1 - i[0]
+        distance = i
         distanceVector.append(distance)
 
     # Convert the distance vector to a distance matrix
@@ -147,7 +149,7 @@ def run_TSNE(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot TSNE
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("TSNE")
     plt.tight_layout()
     fig = graph.get_figure()
@@ -164,17 +166,41 @@ def run_MDS(data, distanceMatrix, pathResults):
     embeddingsDF = pandas.DataFrame(data=d)
 
     #Plot MDS
-    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF, legend=False)
+    graph = sns.scatterplot(x='x', y='y', hue='Papyrus', data=embeddingsDF)
     plt.title("MDS")
     plt.tight_layout()
     fig = graph.get_figure()
     fig.savefig('{}MDS.png'.format(pathResults))
     plt.clf()
 
+def print_classification_report(y_pred, y_true):
+    """
+    Print the classification report given some predictions.
+
+    Parameters:
+    ----------
+        - y_pred: The predictions of some model.
+        - y_true: The true labels.
+
+    Returns:
+    --------
+        - /
+
+    """
+
+    # Argmax because we want the class (= index), not the probability of the input belonging to the class
+    #(for ROC curve or Precision-Recall curve, take the value at index ???? instead of the argmax)
+    y_pred_bool = np.argmax(y_pred, axis=1)
+
+    print(classification_report(y_true, y_pred_bool))
+
+
 def plot_curves(y_pred, y_true, N, pathResults):
 
     # Only keep the predicted probability for class 0 (=similar)
-    y_pred = y_pred[:, 0]
+    # /!\ This means y_pred has values in [0;1] and the positive class is no longer 0,
+    # but 1 !
+    #y_pred = y_pred[:, 0]
 
     # Convert the prediction vector to a prediction matrix
     # 1 line = predictions for 1 fragment vs others
@@ -202,7 +228,7 @@ def plot_curves(y_pred, y_true, N, pathResults):
         trueLabels = labelMatrix[fragment]
 
         # Compute precisions and recalls for different thresholds
-        # Positive label is 0
+        # Positive label is 1 because y_pred has probabilities 
         precisions, recalls, thresholds = precision_recall_curve(trueLabels, predLabels, pos_label=0)
         aupr = average_precision_score(trueLabels, predLabels, pos_label=0)
         fpr, tpr, thresholds = roc_curve(trueLabels, predLabels, pos_label=0)
@@ -294,7 +320,7 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     # Plot the corresponding dendrogram
     d = dendrogram(linkage_matrix, **kwargs)
     
-    # Create a color palette with 10 colors for the 10 test papyri
+    # Create a color palette with 10 color for the 10 test papyri
     my_palette = plt.cm.get_cmap("tab10", 10)
 
     # transforme the Papyrus column in a categorical variable. It will allow to put one color on each level.
@@ -316,68 +342,35 @@ def plot_dendrogram(model, data, pathResults, **kwargs):
     plt.savefig("{}dendrogram.png".format(pathResults))
     plt.clf()
 
-def sample_predictions_ranked(distanceMatrix, data, numberOfFragments, N, k):
-    """
-    Sample N fragments from the dataset and display the k fragments closest to it.
+def colour_histogram_dist(imagePairs):
 
-    Parameters:
-    ----------
-        - distanceMatrix: A distance matrix giving the distance between fragments.
-        - data: The list of fragments (paths to their image), as a dataframe extracted from CSV
-        - numberOfFragments: The total number of test fragments.
-        - N: Number of target fragments to consider.
-        - k: Number of closest fragments to display.
+    y_pred = []
+    j = 0
+    # For each pair
+    for i in imagePairs:
+        image1Path = i[0]
+        image2Path = i[1]
+        # Load image and convert it to RGB (OpenCV stores images in BGR format)
+        image1 = cv2.imread(image1Path)
+        image2 = cv2.imread(image2Path)
+        image1 = cv2.cvtColor(image1, cv2.COLOR_BGR2RGB)
+        image2 = cv2.cvtColor(image2, cv2.COLOR_BGR2RGB)
 
-    Returns:
-    --------
-        - /
-    """
-    
-    # Generate a list with values in range [0,numberOfFragments-1]
-    # (random.sample wants a list)
-    fragmentList = data.iloc[:,0].values
-    IDList = data.iloc[:,1].values
+        H1 = cv2.calcHist([image1], [0, 1, 2], None, [2, 2, 2], [0, 256, 0, 256, 0, 256])
+        H1 = cv2.normalize(H1, H1).flatten()
 
-    x = []
-    for i in range(numberOfFragments):
-        x.append(i)
+        H2 = cv2.calcHist([image2], [0, 1, 2], None, [2, 2, 2], [0, 256, 0, 256, 0, 256])
+        H2 = cv2.normalize(H2, H2).flatten()
 
-    fragmentIndices = random.sample(x, N)
+        # Compare the histogrames using the Chi-Squared distance
+        y_pred.append(cv2.compareHist(H1, H2, cv2.HISTCMP_CHISQR))
 
-    # For each sampled fragment
-    for i in fragmentIndices:
-        # Get its corresponding line in the distance matrix
-        line = distanceMatrix[i]
+    return y_pred
 
-        # Get index of k closest fragments (= smallest values)
-        kBestIndices = np.argpartition(line, k)[k:]
-        print(len(kBestIndices))
-        # Retrieve images and display
-        imgTarget = io.imread(PATH_IMAGES + fragmentList[i])
-        io.imsave("Fragment{}_0.png".format(i), imgTarget)
-        io.imshow(imgTarget)
-        plt.clf()
-        fig = plt.figure("Top-{} fragments".format(k))
-        l = 1
-        for j in kBestIndices:
-            ax = fig.add_subplot(1, k, l)
-            if IDList[i] == IDList[j]:
-                ax.set_title("Similar")
-            else:
-                ax.set_title("Dissimilar")
-            img = io.imread(PATH_IMAGES + fragmentList[j])
-            plt.imshow(img)
-            plt.axis("off")
-            plt.tight_layout()
-            l = l + 1
-            #io.imshow(img)
-            #io.imsave("Fragment{}_{}.png".format(i,j), img)
-        plt.savefig("Fragment{}_results.png".format(i))
-        plt.clf()
-
-def run_pipeline(model, pathCSV, args, pathResults):
+def run_pipeline(pathCSV, pathResults):
     """
     Run the complete evaluation pipeline.
+
 
     Parameters:
     ----------
@@ -391,15 +384,13 @@ def run_pipeline(model, pathCSV, args, pathResults):
 
     """
 
-    SIZE_BATCH = args.batch_size
-    WIDTH_IMAGE = args.size
-    HEIGHT_IMAGE = args.size
-
     # Load data from CSV file
     data = pandas.read_csv(pathCSV, sep=",", header=None)
 
     # Get list of test IDs
     testIDList = __test_IDs_list__(data)
+
+    print(testIDList)
 
     # Keep only test fragments
     testData = data[data.iloc[:,1].isin(testIDList)]
@@ -414,16 +405,13 @@ def run_pipeline(model, pathCSV, args, pathResults):
 
     testData = testData.replace(testIDList, stringList)
 
-    # Generate all possible pairs of test fragments
+    #Generate all possible pairs of test fragments
     pairs, labels = __test_pairs__(testData)
 
     numberOfFragments = testData.values.shape[0]
 
-    # Create keras Sequence using the test data
-    testSequence = fsv.FragmentSequenceValidation(pairs, labels, SIZE_BATCH, WIDTH_IMAGE, HEIGHT_IMAGE, PATH_IMAGES)
-
-    # Get prediction of the model for each fragment pair
-    y_pred = model.predict_generator(testSequence, max_queue_size=MAX_QUEUE_SIZE, workers=multiprocessing.cpu_count(), use_multiprocessing=True, verbose=1)
+    # Get prediction of the colour-histogram baseline for each fragment pair
+    y_pred = colour_histogram_dist(pairs)
 
     # Get the distance matrix from the predictions
     distanceMatrix = get_distance_matrix(y_pred, numberOfFragments, pairs, labels)
@@ -432,14 +420,25 @@ def run_pipeline(model, pathCSV, args, pathResults):
     # Run TSNE and MDS and plot results
     run_TSNE(testData, distanceMatrix, pathResults)
     run_MDS(testData, distanceMatrix, pathResults)
+
+    # y_pred must have values in [0,1] to pass to plot_curves
+    y_pred = np.array(y_pred)
+    y_pred = y_pred / np.max(y_pred)
+    y_pred = 1 - y_pred
     plot_curves(y_pred, labels, numberOfFragments, pathResults)
 
-    # Setting distance_threshold=0 ensures we compute the full tree.
+    # setting distance_threshold=0 ensures we compute the full tree.
     modelClustering = AgglomerativeClustering(distance_threshold=0, n_clusters=None)
 
     modelClustering = modelClustering.fit(distanceMatrix)
     plt.title('Hierarchical Clustering Dendrogram')
-    # Plot the top three levels of the dendrogram
+    # plot the top three levels of the dendrogram
     plot_dendrogram(modelClustering, testData, pathResults, truncate_mode=None, labels=testData.iloc[:,1].values)
 
-    #sample_predictions_ranked(distanceMatrix, testData, numberOfFragments, 30, 5)
+
+if __name__ == '__main__':
+
+    PATH_CSV = "dataset.csv"
+    PREFIX_RESULTS = "Results/Baseline/"
+
+    run_pipeline(PATH_CSV, PREFIX_RESULTS)

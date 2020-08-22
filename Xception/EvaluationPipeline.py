@@ -48,8 +48,8 @@ PROBABILITY_HORIZONTAL_FLIP = 0.5
 PROBABILITY_VERTICAL_FLIP = 0.5
 MAX_QUEUE_SIZE = 50
 
-#PATH_IMAGES = ""
-PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+PATH_IMAGES = ""
+#PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
 
 ###############################################
 # EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
@@ -68,7 +68,6 @@ def __test_IDs_list__(data):
     Returns:
     --------
         - A list containing the IDs of the test papyri
-
     """
 
     # IDList constains the ID of each papyrus
@@ -101,7 +100,6 @@ def __test_pairs__(data):
     --------
         - pairs: The list of all test fragment pairs, of the form [path_to_frag1, path_to_frag2]
         - labels: The list of labels, i.e. original papyrus IDs
-
     """
 
     pairs = []
@@ -157,6 +155,19 @@ def get_distance_matrix(y_pred, N, pairs, labels):
     return distanceMatrix
 
 def run_TSNE(data, distanceMatrix, pathResults):
+    """
+    Run the t-SNE algorithm using the distance matrix obtained from the predictions of a model.
+
+    Parameters:
+    ----------
+        - data: The test data.
+        - distanceMatrix: A symmetric distance matrix obtained from the predictions of a model.
+        - pathResults: Path to the folder where the results have to be saved
+
+    Returns:
+    --------
+        - /
+    """
 
     embeddings = TSNE(n_components=2, random_state=323, metric="precomputed", n_jobs=-1).fit_transform(distanceMatrix)
 
@@ -174,6 +185,19 @@ def run_TSNE(data, distanceMatrix, pathResults):
     plt.clf()
 
 def run_MDS(data, distanceMatrix, pathResults):
+    """
+    Run the MDS algorithm using the distance matrix obtained from the predictions of a model.
+
+    Parameters:
+    ----------
+        - data: The test data.
+        - distanceMatrix: A symmetric distance matrix obtained from the predictions of a model.
+        - pathResults: Path to the folder where the results have to be saved
+
+    Returns:
+    --------
+        - /
+    """
 
     embeddings = MDS(n_components=2, random_state=323, dissimilarity="precomputed", n_jobs=-1).fit_transform(distanceMatrix)
 
@@ -190,33 +214,23 @@ def run_MDS(data, distanceMatrix, pathResults):
     fig.savefig('{}MDS.png'.format(pathResults))
     plt.clf()
 
-def print_classification_report(y_pred, y_true):
+def plot_curves(y_pred, y_true, N, pathResults):
     """
-    Print the classification report given some predictions.
+    Create ROC and MDS curves on the test pairs from the predictions of a model.
 
     Parameters:
     ----------
-        - y_pred: The predictions of some model.
+        - y_pred: The model's predicted labels.
         - y_true: The true labels.
+        - N: The number of distinct fragments in the test data
+        - pathResults: Path to the folder where the results have to be saved
 
     Returns:
     --------
         - /
-
     """
 
-    # Argmax because we want the class (= index), not the probability of the input belonging to the class
-    #(for ROC curve or Precision-Recall curve, take the value at index ???? instead of the argmax)
-    y_pred_bool = np.argmax(y_pred, axis=1)
-
-    print(classification_report(y_true, y_pred_bool))
-
-
-def plot_curves(y_pred, y_true, N, pathResults):
-
     # Only keep the predicted probability for class 0 (=similar)
-    # /!\ This means y_pred has values in [0;1] and the positive class is no longer 0,
-    # but 1 !
     y_pred = y_pred[:, 0]
 
     # Convert the prediction vector to a prediction matrix
@@ -318,7 +332,20 @@ def plot_curves(y_pred, y_true, N, pathResults):
 
 
 def plot_dendrogram(model, data, pathResults, **kwargs):
-    # Create linkage matrix and then plot the dendrogram
+    """
+    Create linkage matrix and then plot the dendrogram.
+
+    Parameters:
+    ----------
+        - model: A fitted AgglomerativeClustering model.
+        - data: The test data
+        - pathResults: Path to the folder where the result (dendrograms figure) has to be saved
+        - kwargs: Additional parameters specific to the dendrogram function of scipy
+
+    Returns:
+    --------
+        - /
+    """
 
     # create the counts of samples under each node
     counts = np.zeros(model.children_.shape[0])
@@ -364,7 +391,6 @@ def run_pipeline(model, pathCSV, pathResults):
     """
     Run the complete evaluation pipeline.
 
-
     Parameters:
     ----------
         - model: The model to be evaluated, already trained.
@@ -374,7 +400,6 @@ def run_pipeline(model, pathCSV, pathResults):
     Returns:
     --------
         - /
-
     """
 
     # Load data from CSV file

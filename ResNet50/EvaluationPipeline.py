@@ -42,8 +42,8 @@ WIDTH_IMAGE = 224
 HEIGHT_IMAGE = 224
 MAX_QUEUE_SIZE = 50
 
-#PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
-PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
+PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+#PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
 
 ###############################################
 # EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
@@ -62,7 +62,6 @@ def __test_IDs_list__(data):
     Returns:
     --------
         - A list containing the IDs of the test papyri
-
     """
 
     # IDList constains the ID of each papyrus
@@ -151,6 +150,19 @@ def get_distance_matrix(y_pred, N, pairs, labels):
     return distanceMatrix
 
 def run_TSNE(data, distanceMatrix, pathResults):
+    """
+    Run the t-SNE algorithm using the distance matrix obtained from the predictions of a model.
+
+    Parameters:
+    ----------
+        - data: The test data.
+        - distanceMatrix: A symmetric distance matrix obtained from the predictions of a model.
+        - pathResults: Path to the folder where the results have to be saved
+
+    Returns:
+    --------
+        - /
+    """
 
     embeddings = TSNE(n_components=2, random_state=323, metric="precomputed", n_jobs=-1).fit_transform(distanceMatrix)
 
@@ -168,6 +180,19 @@ def run_TSNE(data, distanceMatrix, pathResults):
     plt.clf()
 
 def run_MDS(data, distanceMatrix, pathResults):
+    """
+    Run the MDS algorithm using the distance matrix obtained from the predictions of a model.
+
+    Parameters:
+    ----------
+        - data: The test data.
+        - distanceMatrix: A symmetric distance matrix obtained from the predictions of a model.
+        - pathResults: Path to the folder where the results have to be saved
+
+    Returns:
+    --------
+        - /
+    """
 
     embeddings = MDS(n_components=2, random_state=323, dissimilarity="precomputed", n_jobs=-1).fit_transform(distanceMatrix)
 
@@ -185,10 +210,22 @@ def run_MDS(data, distanceMatrix, pathResults):
     plt.clf()
 
 def plot_curves(y_pred, y_true, N, pathResults):
+    """
+    Create ROC and MDS curves on the test pairs from the predictions of a model.
+
+    Parameters:
+    ----------
+        - y_pred: The model's predicted labels.
+        - y_true: The true labels.
+        - N: The number of distinct fragments in the test data
+        - pathResults: Path to the folder where the results have to be saved
+
+    Returns:
+    --------
+        - /
+    """
 
     # Only keep the predicted probability for class 0 (=similar)
-    # /!\ This means y_pred has values in [0;1] and the positive class is no longer 0,
-    # but 1 !
     y_pred = y_pred[:, 0]
 
     # Convert the prediction vector to a prediction matrix
@@ -289,7 +326,20 @@ def plot_curves(y_pred, y_true, N, pathResults):
 
 
 def plot_dendrogram(model, data, pathResults, **kwargs):
-    # Create linkage matrix and then plot the dendrogram
+    """
+    Create linkage matrix and then plot the dendrogram.
+
+    Parameters:
+    ----------
+        - model: A fitted AgglomerativeClustering model.
+        - data: The test data
+        - pathResults: Path to the folder where the result (dendrograms figure) has to be saved
+        - kwargs: Additional parameters specific to the dendrogram function of scipy
+
+    Returns:
+    --------
+        - /
+    """
 
     # create the counts of samples under each node
     counts = np.zeros(model.children_.shape[0])

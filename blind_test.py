@@ -1,3 +1,9 @@
+# # # # # # # # #
+# Python script to perform the "real" use case experiment.
+# /!\ The CSV file for the experiment should have been previously
+# generated using the retrieve_annotations_test.py script.
+# # # # # # # # #
+
 import numpy as np 
 import pandas
 import keras
@@ -175,6 +181,10 @@ if __name__ == "__main__":
     DF = pandas.concat([DFpair, DFpred], axis=1)
     DF = DF.sort_values(by=["Similarity"], ascending=False)
     DF.to_csv("predictions.csv", index=False)
+
+    # # # # # # # # #
+    # To generate the histogram of scores
+    # # # # # # # # #
 
     # Histogram of the predictions
     hist = np.histogram(DF["Similarity"].values, bins=10)

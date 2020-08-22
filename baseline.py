@@ -36,11 +36,6 @@ import PairGenerator
 PATH_IMAGES = ""
 #PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
 
-###############################################
-# EVERYTHING BELOW IS ARCHITECTURE INDEPENDENT
-###############################################
-
-
 def __test_IDs_list__(data):
     """
     Returns a list containing the IDs of the test papyri.

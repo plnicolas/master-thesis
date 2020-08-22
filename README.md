@@ -18,18 +18,21 @@
 
 ## Experiment with the ResNet & Xception architectures
 ### _ResNet50-Twin:_
+(Note: The results and trained networks will be saved in the `./Results/ResNet50` folder)\
 The code is in the `./ResNet50` folder; the main programs are `model_resnet50_IN.py` and `model_resnet50_Random.py`.\
 From the root of the project:
 - `python ResNet50/model_resnet50_IN.py` will run the network with pre-trained weights
 - `python ResNet50/model_resnet50_Random.py` will run the network with random weight initialization
 
 ### _Xception-Twin:_
+(Note: The results and trained networks will be saved in the `./Results/ResNet50` folder)\
 The code is in the `./Xception/` folder; the main programs are `model_xception_IN.py` and `model_xception_Random.py`.\
 From the root of the project:
 - `python Xception/model_xception_IN.py` will run the network with pre-trained weights
 - `python Xception/model_xception_Random.py` will run the network with random weight initialization
 
 ## Experiment with the Papy-S-Net architecture
+(Note: The results and trained networks will be saved in the `./Results/Papy-S-Net` folder)\
 The code is in the `./Papy-S-Net/` folder; the main program is `model_papysnet.py` (`model_papysnet_alpha.py` for the alphamask version).\
 Several optional parameters can be specified when launching the program:
 - --size to specify the input image size (128 by default)
@@ -37,4 +40,17 @@ Several optional parameters can be specified when launching the program:
 - --brightness to specify whether or not to use random shits in brightness (0 for no shifts)
 
 Example of usage (from the root of the project):
-- `python Papy-S-Net/model_papysnet --size 224 --batch-size 32 --brightness 0`
+- `python Papy-S-Net/model_papysnet.py --size 224 --batch-size 32 --brightness 0`
+
+## Baseline
+To run the "RGB histograms" baseline, simply use the command:
+- `python baseline.py`
+
+The results will be stored in the `./Results/Baseline` folder
+
+## "Real" use case
+To download the data for this experiment from the Cytomine server, at the root of the project, use the command:
+- `python retrieve_annotations_test.py`
+  
+Then, the results can be generated using:
+- `python blind_test.py` (the results will be stored in the predictions.csv file)

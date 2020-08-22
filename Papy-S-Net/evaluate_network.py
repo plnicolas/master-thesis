@@ -1,5 +1,9 @@
-import keras
+#################
+# Python script to run the evaluation pipeline on a previously trained
+# and saved Papy-S-Net network.
+#################
 
+import keras
 import os
 from argparse import ArgumentParser
 
@@ -18,15 +22,16 @@ def get_arguments():
 if __name__ == "__main__":
 
     args = get_arguments()
-    
-    PATH_IMAGES = "/scratch/users/plnicolas/datasets/"
-    PATH_CSV = "/home/plnicolas/codes/dataset.csv"
-    PREFIX_RESULTS = "/home/plnicolas/codes/Results/Evaluation/Papy-S-Net/Crop/"
+
+    PATH_IMAGES = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/"
+    PATH_CSV = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/dataset.csv"
+    PATH_MODEL = "/scratch/users/plnicolas/trainedmodels/papycrop.h5"
+    PREFIX_RESULTS = os.path.dirname(os.path.dirname(os.path.abspath(__file__))) + "/Results/Evaluation/Papy-S-Net/Crop/"
 
     if not os.path.exists(PREFIX_RESULTS):
         os.makedirs(PREFIX_RESULTS)
 
     import tensorflow as tf
-    model = keras.models.load_model('/scratch/users/plnicolas/trainedmodels/papycrop.h5', custom_objects={"tf": tf})
+    model = keras.models.load_model(PATH_MODEL, custom_objects={"tf": tf})
 
     EvaluationPipeline.run_pipeline(model, PATH_CSV, args, PREFIX_RESULTS)
